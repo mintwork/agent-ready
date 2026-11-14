@@ -26,7 +26,7 @@ npm run demo:gif     # rebuild docs/demo.gif (needs Google Chrome + ffmpeg)
   Register new checks in `src/checks/index.ts`.
 - `src/scan.ts` — runs checks and computes weighted category/overall scores (`CATEGORIES`).
 - `src/fix/` — `agents-md.ts` generates starter docs; `index.ts` plans and applies changes safely.
-- `src/report/` — terminal renderer and shields.io badge.
+- `src/report/` — terminal renderer, shields.io badge and SARIF (`sarif.ts`, for code scanning).
 - `src/util/` — tiny zero-dep helpers: gitignore matcher, JSONC parser, line diff, ANSI colors,
   path classifiers (`paths.ts`: test/fixture/example paths).
 - `scripts/demo-gif.mjs` — renders the real CLI output on a synthetic temp repo into `docs/demo.gif`

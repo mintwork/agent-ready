@@ -108,6 +108,7 @@ npx @mintwork/agent-ready [path] [options]
 
   --json             Machine-readable JSON report
   --badge            Print a shields.io badge (markdown) for your README
+  --sarif            SARIF 2.1.0 report for GitHub code scanning
   --fix              Apply safe auto-fixes (AGENTS.md/CLAUDE.md, missing doc sections, .gitignore)
   --dry-run          With --fix: show the diff without writing
   --force            With --fix: allow overwriting existing files
@@ -164,13 +165,30 @@ jobs:
       - run: npx --yes @mintwork/agent-ready@latest . --min-score 75
 ```
 
-A reusable composite action is also included (`action.yml`, inputs `path`, `min-score`, `version`;
-output `score`, plus a job summary with your badge):
+A reusable composite action is also included (`action.yml`, inputs `path`, `min-score`, `version`,
+`sarif`, `sarif-category`; outputs `score` and `sarif-file`, plus a job summary with your badge):
 
 ```yaml
 - uses: mintwork/agent-ready@v0
   with: { min-score: 75 }
 ```
+
+Set `sarif: true` to also upload the findings to GitHub code scanning, so they show up as alerts
+on the files they're about (the job needs `security-events: write`):
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+steps:
+  - uses: actions/checkout@v7
+  - uses: mintwork/agent-ready@v0
+    with: { min-score: 75, sarif: true }
+```
+
+`--sarif` reports every check as a rule and every finding of a check that isn't fully passing as a
+result. Repo-level problems (no CI, no context file) are anchored at your `AGENTS.md`/`README.md`.
+Safety checks carry a `security-severity`, so leaked secrets rank as high-severity alerts.
 
 `@v0` tracks the latest 0.x release; pin `@v0.1.0` for a fixed version. The action runs the
 agent-ready release matching the tag you use, unless you override it with `version`.
@@ -226,7 +244,7 @@ whatever `npm run build` does.
 - [ ] Doc staleness via git history (doc untouched while referenced code churned)
 - [ ] MCP/tooling checks (`.mcp.json`, Claude Code hooks, `.claude/settings.json` permissions)
 - [ ] Smarter `--fix`: `tsconfig` strict migration plan, `.cursorignore` for generated code, `.env.example`
-- [ ] SARIF output for GitHub code scanning
+- [x] SARIF output for GitHub code scanning (`--sarif`, action input `sarif: true`)
 - [ ] Public leaderboard of popular open-source repos
 
 Ideas and PRs welcome — especially new checks backed by real agent failure modes.
