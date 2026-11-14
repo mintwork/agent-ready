@@ -108,7 +108,8 @@ npx @mintwork/agent-ready [path] [options]
 
   --json             Machine-readable JSON report
   --badge            Print a shields.io badge (markdown) for your README
-  --fix              Apply safe auto-fixes (AGENTS.md/CLAUDE.md, missing doc sections, .gitignore)
+  --fix              Apply safe auto-fixes (AGENTS.md/CLAUDE.md, missing doc sections, .gitignore,
+                     .cursorignore/.ignore, .env.example) and print a strict-mode migration plan
   --dry-run          With --fix: show the diff without writing
   --force            With --fix: allow overwriting existing files
   --run              Execute the test command and score its speed
@@ -120,6 +121,19 @@ npx @mintwork/agent-ready [path] [options]
 **`--fix` is conservative.** It creates missing files and appends to existing ones (`.gitignore`,
 missing sections in your context doc). It never rewrites content you wrote unless you pass
 `--force`, and it always prints a diff. Generated docs never recommend scripts that publish or delete.
+
+It also:
+
+- **Hides committed generated code** (minified bundles, vendored libraries, `generated/` dirs) by
+  appending it to `.cursorignore` (Cursor) and `.ignore` (ripgrep, used by Claude Code and Codex).
+  The files stay in git.
+- **Writes `.env.example`** from the environment variables your code reads (`process.env.X`,
+  `import.meta.env.X`, `os.getenv`, `os.Getenv`, `env::var`). It only does this when the project
+  loads `.env` files and has no template yet. It writes names only: values from your local `.env`
+  are never copied.
+- **Prints a TypeScript strict-mode migration plan** when a tsconfig isn't `strict`. The plan lists
+  the remaining strict flags in a sensible order, each with the `tsc --noEmit --<flag>` command that
+  previews its errors. It never edits your tsconfig.
 
 ## What it checks
 
@@ -225,7 +239,7 @@ whatever `npm run build` does.
 - [ ] Monorepo awareness: score each workspace package, check nested `AGENTS.md`
 - [ ] Doc staleness via git history (doc untouched while referenced code churned)
 - [ ] MCP/tooling checks (`.mcp.json`, Claude Code hooks, `.claude/settings.json` permissions)
-- [ ] Smarter `--fix`: `tsconfig` strict migration plan, `.cursorignore` for generated code, `.env.example`
+- [x] Smarter `--fix`: `tsconfig` strict migration plan, `.cursorignore` for generated code, `.env.example`
 - [ ] SARIF output for GitHub code scanning
 - [ ] Public leaderboard of popular open-source repos
 

@@ -5,6 +5,22 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Until 1.0, scoring weights may still be tuned in minor
 releases; any change that moves scores is called out here.
 
+## [Unreleased]
+
+### Added
+
+- Smarter `--fix`:
+  - Hides committed generated, minified and vendored files flagged by `nav.generated`. It appends
+    them to `.cursorignore` (Cursor) and `.ignore` (ripgrep: Claude Code, Codex), collapsing
+    `generated/`/`vendor/`/`dist/` directories into one entry.
+  - Creates `.env.example` from the env vars the product code reads (JS/TS, Python, Go, Rust,
+    Ruby), but only when the project loads `.env` files (a dotenv library, or a local `.env*`
+    exists) and no template exists. Names only: values are never copied.
+  - Prints a TypeScript strict-mode migration plan for non-strict tsconfigs (flags in order, a
+    `tsc --noEmit --<flag>` preview command, escape-hatch counts). Report only: tsconfigs are
+    never edited.
+  - Scores are unchanged.
+
 ## [0.1.1] - 2026-11-14
 
 ### Changed

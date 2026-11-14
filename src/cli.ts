@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util';
 import { createContext } from './context.js';
 import { applyFixes, planFixes } from './fix/index.js';
+import { renderStrictPlans, strictMigrationPlans } from './fix/strict-plan.js';
 import { badgeMarkdown } from './report/badge.js';
 import { renderTerminal } from './report/terminal.js';
 import { scanContext } from './scan.js';
@@ -22,7 +23,8 @@ Usage
 Options
   --json             Machine-readable JSON report
   --badge            Print a shields.io badge (markdown) for your README
-  --fix              Apply safe auto-fixes (creates AGENTS.md/CLAUDE.md, .gitignore entries)
+  --fix              Apply safe auto-fixes (AGENTS.md/CLAUDE.md, .gitignore, .cursorignore/.ignore,
+                     .env.example) and print a TypeScript strict-mode migration plan
   --dry-run          With --fix: show the diff without writing
   --force            With --fix: allow overwriting existing files
   --run              Execute the test command and score its speed
@@ -76,6 +78,8 @@ export async function main(argv: string[], io: Io = process): Promise<number> {
 
   if (values.fix) {
     const before = report.score;
+    // Report-only advice, computed before the fixes change anything.
+    const strictPlan = renderStrictPlans(ctx, strictMigrationPlans(ctx));
     const changes = planFixes(ctx);
     const log = values.json ? io.stderr : io.stdout;
     if (changes.length === 0) {
@@ -116,6 +120,10 @@ export async function main(argv: string[], io: Io = process): Promise<number> {
           );
         }
       }
+    }
+    if (strictPlan.length) {
+      const [title, ...rest] = strictPlan;
+      log.write(`\n  ${colors.c('bold', title ?? '')}\n${rest.join('\n')}\n`);
     }
   }
 
