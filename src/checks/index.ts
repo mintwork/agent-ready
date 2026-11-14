@@ -1,4 +1,5 @@
 import type { Check } from '../types.js';
+import { agentToolingChecks } from './agent-tooling.js';
 import { contextChecks } from './context-docs.js';
 import { feedbackChecks } from './feedback.js';
 import { navigabilityChecks } from './navigability.js';
@@ -12,4 +13,5 @@ export const builtinChecks: Check[] = [
   ...navigabilityChecks,
   ...typeSafetyChecks,
   ...safetyChecks,
+  ...agentToolingChecks,
 ];
