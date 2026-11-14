@@ -18,16 +18,9 @@ export interface Workspaces {
   packages: WorkspacePackage[];
 }
 
-/** Packages beyond this are listed but not scanned one by one. */
-export const MAX_PACKAGES = 200;
-
 /** Workspace glob (`packages/*`, `apps/**`, `crates/foo`) to a regex over directory paths. */
 export function workspaceGlobRe(glob: string): RegExp {
-  const g = glob
-    .trim()
-    .replace(/^\.\//, '')
-    .replace(/\/+$/, '')
-    .replace(/\/\*\*$/, '/**');
+  const g = trimSlashes(glob.trim().replace(/^\.\//, ''));
   let re = '';
   for (let i = 0; i < g.length; i++) {
     const ch = g[i] as string;
@@ -57,7 +50,8 @@ export function yamlList(text: string, key: string): string[] {
   const out: string[] = [];
   let inside = false;
   for (const raw of text.split(/\r?\n/)) {
-    const line = raw.replace(/\s+#.*$/, '');
+    const hash = raw.search(/\s#/);
+    const line = hash === -1 ? raw : raw.slice(0, hash);
     if (!line.trim()) continue;
     if (/^\S/.test(line)) {
       inside = new RegExp(`^${key}\\s*:\\s*(\\[.*\\])?\\s*$`).test(line);
@@ -72,6 +66,13 @@ export function yamlList(text: string, key: string): string[] {
     if (m) out.push(unquote(m[1] ?? ''));
   }
   return out.filter(Boolean);
+}
+
+/** Drop trailing slashes (a loop, not a regex: `/\/+$/` backtracks on long runs of slashes). */
+function trimSlashes(s: string): string {
+  let end = s.length;
+  while (end > 0 && s[end - 1] === '/') end--;
+  return s.slice(0, end);
 }
 
 function unquote(s: string): string {
@@ -107,7 +108,7 @@ export function goWorkUses(text: string): string[] {
     out.push(...(m[1] ?? '').split(/\s+/).filter(Boolean));
   }
   for (const m of noComments.matchAll(/^\s*use\s+([^\s(][^\s]*)/gm)) out.push(m[1] ?? '');
-  return out.map((u) => unquote(u).replace(/^\.\//, '').replace(/\/$/, '') || '.');
+  return out.map((u) => trimSlashes(unquote(u).replace(/^\.\//, '')) || '.');
 }
 
 function manifestDirs(ctx: RepoContext, name: string): string[] {
