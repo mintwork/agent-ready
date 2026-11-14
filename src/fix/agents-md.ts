@@ -1,4 +1,5 @@
 import { basename } from 'node:path';
+import { jvmBuildTool } from '../checks/feedback.js';
 import { isDangerousScript } from '../checks/safety.js';
 import { type RepoContext, runScriptCmd } from '../context.js';
 
@@ -143,6 +144,24 @@ export function detectCommands(ctx: RepoContext): Cmd[] {
         : { label: 'Vet (Go)', cmd: 'go vet ./...' },
     );
   }
+  const jvm = jvmBuildTool(ctx);
+  if ((ctx.languages.includes('java') || ctx.languages.includes('kotlin')) && jvm) {
+    const maven = jvm.tool === 'maven';
+    cmds.push({
+      label: 'Build (JVM)',
+      cmd: `${jvm.run} ${maven ? 'package -DskipTests' : 'build -x test'}`,
+    });
+    cmds.push({ label: 'Run tests (JVM)', cmd: `${jvm.run} test` });
+    const buildText = ['pom.xml', 'build.gradle', 'build.gradle.kts']
+      .map((f) => ctx.read(f) ?? '')
+      .join('\n');
+    if (/\bspotless\b/.test(buildText)) {
+      cmds.push({
+        label: 'Format check (JVM)',
+        cmd: maven ? `${jvm.run} spotless:check` : `${jvm.run} spotlessCheck`,
+      });
+    }
+  }
   if (makefile && cmds.length <= 1) {
     for (const target of ['build', 'test', 'lint', 'check']) {
       if (new RegExp(`^${target}:`, 'm').test(makefile))
@@ -252,6 +271,8 @@ export function generateAgentsMd(ctx: RepoContext): string {
     python: 'Python',
     go: 'Go',
     rust: 'Rust',
+    java: 'Java',
+    kotlin: 'Kotlin',
   };
   const langs = ctx.languages.map((l) => LABELS[l] ?? l);
   const lines: string[] = [];

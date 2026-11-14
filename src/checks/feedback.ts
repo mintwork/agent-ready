@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process';
-import { type Language, type RepoContext, runScriptCmd } from '../context.js';
+import { JVM_BUILD, type Language, type RepoContext, runScriptCmd } from '../context.js';
 import type { Check, CheckResult } from '../types.js';
+import { isFixturePath } from '../util/paths.js';
 import { projectTsconfigs } from './type-safety.js';
 
 const JS_TEST_DEPS = [
@@ -66,7 +67,47 @@ export function testCommand(ctx: RepoContext): string | null {
   }
   if (hasRust(ctx) && ctx.has('Cargo.toml')) return 'cargo test';
   if (hasGo(ctx) && ctx.has('go.mod')) return 'go test ./...';
+  const jvm = jvmBuildTool(ctx);
+  if (hasJvm(ctx) && jvm) return `${jvm.run} test`;
   return null;
+}
+
+function hasJvm(ctx: RepoContext): boolean {
+  return ctx.languages.includes('java') || ctx.languages.includes('kotlin');
+}
+
+/** The root Maven/Gradle build, with the wrapper when one is committed. */
+export function jvmBuildTool(ctx: RepoContext): { tool: 'maven' | 'gradle'; run: string } | null {
+  if (
+    ['build.gradle', 'build.gradle.kts', 'settings.gradle', 'settings.gradle.kts'].some((f) =>
+      ctx.has(f),
+    )
+  ) {
+    return { tool: 'gradle', run: ctx.has('gradlew') ? './gradlew' : 'gradle' };
+  }
+  if (ctx.has('pom.xml')) return { tool: 'maven', run: ctx.has('mvnw') ? './mvnw' : 'mvn' };
+  return null;
+}
+
+/** All Maven/Gradle build files, for plugins that are configured by being applied (checkstyle, spotless). */
+function jvmBuildText(ctx: RepoContext): string {
+  return ctx.files
+    .filter((f) => JVM_BUILD.test(f) && !isFixturePath(f))
+    .slice(0, 200)
+    .map((f) => ctx.read(f) ?? '')
+    .join('\n');
+}
+
+const JVM_LINTERS =
+  /\b(checkstyle|spotless|pmd|spotbugs|errorprone|error_prone|error-prone|ktlint|detekt|ktfmt|google-java-format|palantir-java-format|diktat)\b/i;
+
+function jvmTestFiles(ctx: RepoContext): number {
+  return ctx.files.filter(
+    (f) =>
+      /\.(?:java|kt|groovy|scala)$/.test(f) &&
+      (/(^|\/)src\/(?:test|androidTest|integrationTest|[\w]*[Tt]est)\/|(^|\/)test\//.test(f) ||
+        /(?:Tests?|IT|Spec)\.(?:java|kt|groovy)$/.test(f)),
+  ).length;
 }
 
 /** Per-language part of a check: its score and how much of the codebase it covers. */
@@ -169,6 +210,19 @@ export const feedbackChecks: Check[] = [
         parts.push(part(ctx, tests ? 1 : 0, 'go'));
         notes.push(tests ? '`go test ./...`' : 'no Go tests');
       }
+      if (hasJvm(ctx)) {
+        const build = jvmBuildTool(ctx);
+        const tests = jvmTestFiles(ctx);
+        const score = tests && build ? 1 : tests ? 0.5 : 0;
+        parts.push(part(ctx, score, 'java', 'kotlin'));
+        notes.push(
+          tests && build
+            ? `\`${build.run} test\` (${tests} test files)`
+            : tests
+              ? `${tests} JVM test files but no root Maven/Gradle build`
+              : 'no Java/Kotlin tests',
+        );
+      }
       const score = avg(parts);
       if (score === null) return { score: null, summary: 'No supported language detected' };
       return {
@@ -256,6 +310,21 @@ export const feedbackChecks: Check[] = [
           );
         }
       }
+      if (hasJvm(ctx)) {
+        const configured =
+          JVM_LINTERS.test(jvmBuildText(ctx)) ||
+          ctx.files.some((f) =>
+            /(^|\/)(?:checkstyle[\w-]*\.xml|detekt[\w-]*\.ya?ml|pmd[\w-]*\.xml|\.?ktlint[\w-]*)$/.test(
+              f,
+            ),
+          );
+        parts.push(part(ctx, configured ? 1 : 0.6, 'java', 'kotlin'));
+        notes.push(
+          configured
+            ? 'JVM linter (checkstyle/spotless/detekt/...)'
+            : 'only compiler warnings (no checkstyle/spotless/ktlint/detekt)',
+        );
+      }
       const score = avg(parts);
       if (score === null) return { score: null, summary: 'No supported language detected' };
       return {
@@ -263,7 +332,7 @@ export const feedbackChecks: Check[] = [
         summary: `Lint: ${notes.join('; ')}`,
         suggestion:
           score < 1
-            ? 'Configure a fast linter (eslint/biome for JS, ruff for Python, clippy for Rust, golangci-lint for Go) and run it in CI.'
+            ? 'Configure a fast linter (eslint/biome for JS, ruff for Python, clippy for Rust, golangci-lint for Go, checkstyle/spotless/detekt for the JVM) and run it in CI.'
             : undefined,
       };
     },
@@ -322,6 +391,15 @@ export const feedbackChecks: Check[] = [
       if (hasGo(ctx)) {
         parts.push(part(ctx, 1, 'go'));
         notes.push('`go build ./...`');
+      }
+      if (hasJvm(ctx)) {
+        const build = jvmBuildTool(ctx);
+        parts.push(part(ctx, build ? 1 : 0.5, 'java', 'kotlin'));
+        notes.push(
+          build
+            ? `\`${build.run} ${build.tool === 'maven' ? 'compile' : 'classes'}\``
+            : 'no root Maven/Gradle build to compile with',
+        );
       }
       const score = avg(parts);
       if (score === null) return { score: null, summary: 'No typed language detected' };

@@ -61,6 +61,8 @@ const CANDIDATES: IgnoreCandidate[] = [
   { entry: 'dist/', dir: 'dist', onlyIfUntracked: true },
   { entry: 'build/', dir: 'build', onlyIfUntracked: true },
   { entry: 'out/', dir: 'out', onlyIfUntracked: true },
+  // Maven and Cargo build output.
+  { entry: 'target/', dir: 'target', onlyIfUntracked: true },
   { entry: 'coverage/', dir: 'coverage', onlyIfUntracked: true },
   { entry: '.cache/', dir: '.cache', onlyIfUntracked: true },
   { entry: '*.egg-info/', file: /(^|\/)[^/]+\.egg-info\// },

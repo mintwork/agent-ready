@@ -28,7 +28,10 @@ export const HEAVY_DIRS = [
 
 const MAX_FILES = 200_000;
 
-export type Language = 'typescript' | 'javascript' | 'python' | 'go' | 'rust';
+/** Maven / Gradle build files (any module). */
+export const JVM_BUILD = /(^|\/)(?:pom\.xml|build\.gradle(?:\.kts)?|settings\.gradle(?:\.kts)?)$/;
+
+export type Language = 'typescript' | 'javascript' | 'python' | 'go' | 'rust' | 'java' | 'kotlin';
 
 export type PackageManager = 'npm' | 'pnpm' | 'yarn' | 'bun';
 
@@ -330,8 +333,11 @@ export function createContext(rootInput: string): RepoContext {
   const pyCount = countExt(/\.py$/);
   const goCount = countExt(/\.go$/);
   const rsCount = countExt(/\.rs$/);
-  const otherCount = countExt(/\.(?:java|kt|scala|c|cc|cpp|h|hpp|cs|rb|php|swift|m|zig|ex|exs)$/);
-  const codeTotal = tsCount + jsCount + pyCount + goCount + rsCount + otherCount;
+  const javaCount = countExt(/\.java$/);
+  const ktCount = countExt(/\.kt$/);
+  const otherCount = countExt(/\.(?:scala|c|cc|cpp|h|hpp|cs|rb|php|swift|m|zig|ex|exs)$/);
+  const codeTotal =
+    tsCount + jsCount + pyCount + goCount + rsCount + javaCount + ktCount + otherCount;
   const significant = (n: number) =>
     n > 0 && (n >= Math.max(3, codeTotal * 0.1) || n === codeTotal);
   const hasTsconfig = files.some(
@@ -350,6 +356,11 @@ export function createContext(rootInput: string): RepoContext {
   if (pyManifest || significant(pyCount)) languages.push('python');
   if (fileSet.has('go.mod') || significant(goCount)) languages.push('go');
   if (fileSet.has('Cargo.toml') || significant(rsCount)) languages.push('rust');
+  // A root Maven/Gradle build decides it; otherwise (e.g. an `android/` folder in a React Native
+  // app) Java/Kotlin must be a real share of the code.
+  const jvmBuild = files.some((f) => !f.includes('/') && JVM_BUILD.test(f));
+  if ((jvmBuild && javaCount > 0) || significant(javaCount)) languages.push('java');
+  if ((jvmBuild && ktCount > 0) || significant(ktCount)) languages.push('kotlin');
   const codeFiles: Partial<Record<Language, number>> = {};
   const counts: Record<Language, number> = {
     typescript: tsCount,
@@ -357,6 +368,8 @@ export function createContext(rootInput: string): RepoContext {
     python: pyCount,
     go: goCount,
     rust: rsCount,
+    java: javaCount,
+    kotlin: ktCount,
   };
   for (const l of languages) codeFiles[l] = counts[l];
   const detectedTotal = languages.reduce((n, l) => n + counts[l], 0);

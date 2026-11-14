@@ -27,7 +27,7 @@ export function codeText(md: string): string {
 }
 
 const RUNNERS =
-  '(?:npm|pnpm|yarn|bun|npx|bunx|nub|vp|make|just|task|mise|moon|uv|uvx|poetry|pdm|hatch|tox|nox|python3?|pip|cargo|go|deno|turbo|nx|bazel|bazelisk|gradlew|gradle|mvn|dotnet|rake|bundle|mix)';
+  '(?:npm|pnpm|yarn|bun|npx|bunx|nub|vp|make|just|task|mise|moon|uv|uvx|poetry|pdm|hatch|tox|nox|python3?|pip|cargo|go|deno|turbo|nx|bazel|bazelisk|gradlew|gradle|mvnw|mvn|dotnet|rake|bundle|mix)';
 /** Any tool invoked as `<tool> run|exec <task>` (e.g. `mise run test`, `nub exec vitest`). */
 const GENERIC_RUN = '(?:\\b[\\w.-]+\\s+(?:run|exec)\\b)';
 
@@ -41,7 +41,7 @@ const COMMAND_KINDS: Record<string, RegExp> = {
     'im',
   ),
   build: new RegExp(
-    `(?:(?:\\b${RUNNERS}\\b|${GENERIC_RUN})[^\\n]*\\b(?:build|compile|bundle|install|sync|dev|start)\\b)|^\\s*(?:tsc|vite|webpack|esbuild)\\b|^\\s*(?:make|just)\\s*$`,
+    `(?:(?:\\b${RUNNERS}\\b|${GENERIC_RUN})[^\\n]*\\b(?:build|compile|bundle|install|sync|dev|start|package|assemble)\\b)|^\\s*(?:tsc|vite|webpack|esbuild)\\b|^\\s*(?:make|just)\\s*$`,
     'im',
   ),
 };

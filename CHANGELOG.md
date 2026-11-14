@@ -5,6 +5,27 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Until 1.0, scoring weights may still be tuned in minor
 releases; any change that moves scores is called out here.
 
+## [Unreleased]
+
+### Added
+
+- Basic Java/Kotlin support:
+  - Detection: a root `pom.xml`/`build.gradle(.kts)`/`settings.gradle(.kts)` with `.java`/`.kt`
+    files, or a significant share of JVM code. An `android/` folder in a JS app does not count.
+  - The existing checks now score the JVM side:
+    - `feedback.test`: tests under `src/test/` or `*Test`/`*IT`/`*Spec`, run via
+      `./mvnw test`/`mvn test`/`./gradlew test`.
+    - `feedback.lint`: checkstyle, spotless, PMD, SpotBugs, Error Prone, ktlint or detekt in the
+      build or config files (1.0), otherwise compiler warnings only (0.6).
+    - `feedback.typecheck`: compile.
+    - `types.static`: Java/Kotlin count as compiler-checked.
+  - `--fix` generates Maven/Gradle build and test commands, and docs that list `./mvnw` commands
+    are recognized.
+  - `target/` (Maven, Cargo) is suggested for `.gitignore` when it is present, untracked and
+    not ignored.
+  - Score effect: Java repos used to be scored on CI alone, with type safety n/a. Now, for
+    example: gson 61 → 67, spring-petclinic 63 → 69, timber 58 → 64. No non-JVM repo moved.
+
 ## [0.1.1] - 2026-11-14
 
 ### Changed

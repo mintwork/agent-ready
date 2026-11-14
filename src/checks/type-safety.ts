@@ -388,15 +388,18 @@ export const typeSafetyChecks: Check[] = [
   {
     id: 'types.static',
     category: 'types',
-    title: 'Compiler-checked types (Go/Rust)',
+    title: 'Compiler-checked types (Go/Rust/Java/Kotlin)',
     weight: 1,
     run(ctx): CheckResult {
-      const langs = (['rust', 'go'] as const).filter((l) => ctx.languages.includes(l));
-      if (langs.length === 0) return { score: null, summary: 'No Go/Rust' };
+      const names = { rust: 'Rust', go: 'Go', java: 'Java', kotlin: 'Kotlin' } as const;
+      const langs = (['rust', 'go', 'java', 'kotlin'] as const).filter((l) =>
+        ctx.languages.includes(l),
+      );
+      if (langs.length === 0) return { score: null, summary: 'No Go/Rust/Java/Kotlin' };
       return {
         score: 1,
         weightScale: ctx.share(...langs),
-        summary: `${langs.map((l) => (l === 'rust' ? 'Rust' : 'Go')).join(' + ')}: statically typed, checked by the compiler`,
+        summary: `${langs.map((l) => names[l]).join(' + ')}: statically typed, checked by the compiler`,
       };
     },
   },
