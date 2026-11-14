@@ -5,6 +5,19 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Until 1.0, scoring weights may still be tuned in minor
 releases; any change that moves scores is called out here.
 
+## [Unreleased]
+
+### Added
+
+- New check `context.drift` (weight 1): doc staleness from git history (local `git log`, no
+  network). A context doc is drifting when it hasn't been committed for 90+ days (relative to HEAD)
+  and 25+ later commits edited the files it names or added/removed files in the directories it
+  describes. Manifests, lockfiles and other docs don't count. Symlinked docs are judged by their
+  target, docs with uncommitted edits are skipped, and the check is n/a outside git, in shallow
+  clones and for docs that reference no code. Score: 1 − 0.5 × the share of drifting docs.
+  Effect on real repos: excalidraw 88 → 87 (a 537-day-old CLAUDE.md); repos with recently edited
+  docs gain a passing check (openai-agents-python 85 → 86, vitest context 87 → 88).
+
 ## [0.1.1] - 2026-11-14
 
 ### Changed
