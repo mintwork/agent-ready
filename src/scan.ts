@@ -58,6 +58,7 @@ export async function scanContext(ctx: RepoContext, opts: ScanOptions = {}): Pro
   const runOpts: RunOptions = {
     run: opts.run ?? false,
     runTimeoutMs: opts.runTimeoutMs ?? 300_000,
+    flaky: opts.flaky ?? false,
   };
   const outcomes: CheckOutcome[] = [];
   // One concurrent stat pass is much faster than thousands of sync stats spread across checks.

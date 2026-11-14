@@ -25,7 +25,9 @@ Options
   --fix              Apply safe auto-fixes (creates AGENTS.md/CLAUDE.md, .gitignore entries)
   --dry-run          With --fix: show the diff without writing
   --force            With --fix: allow overwriting existing files
-  --run              Execute the test command and score its speed
+  --run              Execute the test, lint and typecheck commands (opt-in: runs project code)
+  --flaky            With --run: run the tests twice and flag flaky results
+  --timeout <s>      With --run: per-command timeout in seconds (default 300)
   --min-score <n>    Exit 1 if the score is below n (CI gating)
   --verbose, -v      Show passing checks and all findings
   --no-color         Disable colors
@@ -71,7 +73,16 @@ export async function main(argv: string[], io: Io = process): Promise<number> {
     io.stderr.write(`${(err as Error).message}\n`);
     return 2;
   }
-  const scanOpts = { run: Boolean(values.run) };
+  const timeout = values.timeout === undefined ? 300 : Number(values.timeout);
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    io.stderr.write('--timeout must be a positive number of seconds\n');
+    return 2;
+  }
+  const scanOpts = {
+    run: Boolean(values.run || values.flaky),
+    flaky: Boolean(values.flaky),
+    runTimeoutMs: timeout * 1000,
+  };
   let report = await scanContext(ctx, scanOpts);
 
   if (values.fix) {
@@ -145,6 +156,8 @@ function parse(argv: string[]) {
       'dry-run': { type: 'boolean' },
       force: { type: 'boolean' },
       run: { type: 'boolean' },
+      flaky: { type: 'boolean' },
+      timeout: { type: 'string' },
       'min-score': { type: 'string' },
       verbose: { type: 'boolean', short: 'v' },
       'no-color': { type: 'boolean' },

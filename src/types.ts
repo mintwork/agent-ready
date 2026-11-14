@@ -41,8 +41,10 @@ export interface FileChange {
 export interface RunOptions {
   /** Actually execute the test command to time it. */
   run: boolean;
-  /** Timeout for --run in ms. */
+  /** Timeout for each command --run executes, in ms. */
   runTimeoutMs: number;
+  /** With `run`: run the test command a second time and compare (flaky-test detection). */
+  flaky?: boolean;
 }
 
 export interface Check {

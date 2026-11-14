@@ -111,7 +111,9 @@ npx @mintwork/agent-ready [path] [options]
   --fix              Apply safe auto-fixes (AGENTS.md/CLAUDE.md, missing doc sections, .gitignore)
   --dry-run          With --fix: show the diff without writing
   --force            With --fix: allow overwriting existing files
-  --run              Execute the test command and score its speed
+  --run              Execute the test, lint and typecheck commands (runs project code)
+  --flaky            With --run: run the tests twice and flag flaky results
+  --timeout <s>      With --run: per-command timeout in seconds (default 300)
   --min-score <n>    Exit 1 if the score is below n (CI gating)
   --verbose, -v      Show passing checks and all findings
   --no-color         Disable colors
@@ -130,6 +132,14 @@ missing sections in your context doc). It never rewrites content you wrote unles
 | **Navigability**   | 20%    | `node_modules`, `.venv`, `dist`, caches ignored (and not committed) · no source files over 1000 lines · no minified/vendored/generated blobs in agent view · shallow directory tree · README                                                                                                                                                             |
 | **Type safety**    | 15%    | TypeScript `strict` across root and package tsconfigs (follows `extends`, incl. workspace packages), `any` / `@ts-ignore` / `@ts-nocheck` density · plain JS penalized · Python type-hint coverage of product code + mypy/pyright config · Go/Rust count as compiler-checked                                                                             |
 | **Safety**         | 10%    | Committed `.env` / keys / credentials files · AWS, GitHub, Slack, Stripe, OpenAI, Anthropic, Google, npm token patterns · dangerous scripts: `rm -rf ~`, `curl \| sh`, force-push, `npm publish` hidden in `build`/`test`, network calls in install hooks                                                                                                |
+
+**`--run` executes project code**, so it is opt-in. It runs the test command (timed), the lint
+command and the typecheck command the report detected (package.json scripts, `make` targets,
+ruff/mypy, `go vet`/`go build`, `cargo clippy`/`cargo check`). Scripts that publish or delete are
+never run. `--flaky` runs the test suite a second time and compares the results, including which
+tests failed for vitest/jest, pytest, `go test`, `cargo test` and TAP output. Each command gets a
+timeout (`--timeout`, default 300s), and on timeout the whole process tree is killed. Only use
+`--run` on repos you trust.
 
 Checks that don't apply (e.g. Python checks in a TS repo) are marked n/a and excluded from the score.
 In polyglot repos, per-language parts are weighted by each language's share of the code, so a tooling
@@ -221,7 +231,7 @@ whatever `npm run build` does.
 ## Roadmap
 
 - [ ] Deeper Go and Rust checks (unsafe/`interface{}` density, nested `Cargo.toml` workspaces) and Java/Kotlin support
-- [ ] `--run` for lint/typecheck too, and flaky-test detection (run twice, compare)
+- [x] `--run` for lint/typecheck too, and flaky-test detection (run twice, compare)
 - [ ] Monorepo awareness: score each workspace package, check nested `AGENTS.md`
 - [ ] Doc staleness via git history (doc untouched while referenced code churned)
 - [ ] MCP/tooling checks (`.mcp.json`, Claude Code hooks, `.claude/settings.json` permissions)

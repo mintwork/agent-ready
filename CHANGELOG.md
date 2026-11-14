@@ -5,6 +5,24 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Until 1.0, scoring weights may still be tuned in minor
 releases; any change that moves scores is called out here.
 
+## [Unreleased]
+
+### Added
+
+- `--run` also runs the lint and typecheck commands. New checks `feedback.lint-passes` and
+  `feedback.typecheck-passes` (weight 1 each) score 1 when the command passes, 0.4 when it fails and
+  0.2 on timeout; a command that isn't installed is n/a. Scripts that publish or delete are never run.
+- `--flaky` (implies `--run`): flaky-test detection. New check `feedback.flaky` (weight 1) runs the
+  test command twice and compares exit status and failing test names (vitest/jest, pytest, go,
+  cargo, TAP). The first run is shared with `feedback.speed`, so the suite runs twice, not three times.
+- `--timeout <seconds>`: per-command timeout for `--run` (default 300).
+- Scores without `--run` are unchanged. All new checks are n/a unless you opt in.
+
+### Changed
+
+- `--run` kills the whole process tree on timeout (it used to kill only the shell), and runs
+  commands with `CI=1 NO_COLOR=1`.
+
 ## [0.1.1] - 2026-11-14
 
 ### Changed

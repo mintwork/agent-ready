@@ -41,6 +41,8 @@ npm run demo:gif     # rebuild docs/demo.gif (needs Google Chrome + ffmpeg)
 - Zero runtime dependencies. Node 22+ built-ins only.
 - Fixers never write directly: they return `FileChange`s; `applyFixes` refuses to overwrite without `--force`.
 - Checks must be fast (whole scan < 2s on a typical repo) and must not execute project code unless `--run` is passed.
+  Checks that execute commands live in `src/checks/run-checks.ts` and use `runCommand()` (`src/util/run.ts`: timeout,
+  process-group kill); tests for them only run synthetic fixtures.
   To read many files, use `ctx.mapFiles()` (concurrent, uncached) rather than `ctx.read()` in a loop.
 - Per-language checks should return `weightScale: ctx.share(lang)` (or weight their parts by it) so
   minor languages in a polyglot repo don't dominate.
