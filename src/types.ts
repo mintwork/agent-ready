@@ -90,6 +90,40 @@ export interface Report {
   truncated: boolean;
   /** Wall time for the whole scan, including listing files. */
   durationMs: number;
+  /** Per-package breakdown for monorepos (npm/pnpm/yarn/bun/Cargo/Go workspaces). */
+  workspaces?: WorkspaceReport;
+}
+
+export interface PackageReport {
+  /** Package directory relative to the repo root (`.` when the root is itself a package). */
+  dir: string;
+  name: string | null;
+  /** Workspace tool that declared the package: npm, pnpm, yarn, bun, cargo or go. */
+  kind: string;
+  /**
+   * 0..100 from the package-level categories (feedback loops, navigability, type safety) run on
+   * the package alone; null when nothing applied. Context docs and safety are scored repo-wide.
+   */
+  score: number | null;
+  categories: CategoryScore[];
+  languages: string[];
+  /** Product code files (tests, fixtures, examples excluded). Weights the aggregate. */
+  codeFiles: number;
+  /** Context docs inside the package (AGENTS.md / CLAUDE.md). */
+  docs: string[];
+  /** Whether the repo-level docs mention the package by path or name. */
+  mentioned: boolean;
+  /** Package-level checks that are not fully passing. */
+  issues: Array<{ id: string; title: string; score: number; summary: string }>;
+}
+
+export interface WorkspaceReport {
+  kinds: string[];
+  /** Code-size-weighted mean of the package scores, or null when no package was scored. */
+  aggregate: number | null;
+  packages: PackageReport[];
+  /** Total packages found; only the largest `packages.length` are scored when there are many. */
+  total: number;
 }
 
 export interface UserConfig {

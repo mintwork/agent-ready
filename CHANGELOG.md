@@ -5,6 +5,21 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Until 1.0, scoring weights may still be tuned in minor
 releases; any change that moves scores is called out here.
 
+## [Unreleased]
+
+### Added
+
+- Monorepo awareness. npm/pnpm/yarn/bun workspaces, Cargo workspaces and Go multi-module repos are
+  detected, and each package is scored on feedback loops, navigability and type safety. Root
+  configs and root scripts count for the packages. The terminal report shows a per-package
+  breakdown and a code-size-weighted aggregate; `--json` has a new `workspaces` field.
+  `scan(root, { workspaces: false })` turns it off. The headline score is still repo-wide.
+- New check `context.packages` (weight 1): large workspace packages (10+ code files) have their
+  own `AGENTS.md`/`CLAUDE.md` or are mentioned in the root docs. It is n/a outside monorepos, so
+  only monorepos with context docs can see a score change (e.g. vitest: context docs 87 → 88,
+  overall unchanged at 91).
+- `createPackageContext()` builds a context for one package from its repo's context.
+
 ## [0.1.1] - 2026-11-14
 
 ### Changed

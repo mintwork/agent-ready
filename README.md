@@ -123,18 +123,31 @@ missing sections in your context doc). It never rewrites content you wrote unles
 
 ## What it checks
 
-| Category           | Weight | Checks                                                                                                                                                                                                                                                                                                                                                   |
-| ------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Context docs**   | 30%    | `AGENTS.md` / `CLAUDE.md` / `.cursor/rules` / Copilot / Gemini instructions exist · they list exact build, test and lint commands · they describe architecture and key directories · **not stale**: every referenced path and `npm run` script actually exists · not too long (or too thin) · both `AGENTS.md` and `CLAUDE.md` so every agent is covered |
-| **Feedback loops** | 25%    | A discoverable test command (package.json `test`, pytest config, `make test`, `cargo test`, `go test`) · linter configured (eslint, biome, oxlint, ruff, flake8, clippy, golangci-lint) · typecheck command (`tsc`, mypy, pyright) · CI config · `--run`: test suite passes and is fast                                                                  |
-| **Navigability**   | 20%    | `node_modules`, `.venv`, `dist`, caches ignored (and not committed) · no source files over 1000 lines · no minified/vendored/generated blobs in agent view · shallow directory tree · README                                                                                                                                                             |
-| **Type safety**    | 15%    | TypeScript `strict` across root and package tsconfigs (follows `extends`, incl. workspace packages), `any` / `@ts-ignore` / `@ts-nocheck` density · plain JS penalized · Python type-hint coverage of product code + mypy/pyright config · Go/Rust count as compiler-checked                                                                             |
-| **Safety**         | 10%    | Committed `.env` / keys / credentials files · AWS, GitHub, Slack, Stripe, OpenAI, Anthropic, Google, npm token patterns · dangerous scripts: `rm -rf ~`, `curl \| sh`, force-push, `npm publish` hidden in `build`/`test`, network calls in install hooks                                                                                                |
+| Category           | Weight | Checks                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ------------------ | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Context docs**   | 30%    | `AGENTS.md` / `CLAUDE.md` / `.cursor/rules` / Copilot / Gemini instructions exist · they list exact build, test and lint commands · they describe architecture and key directories · **not stale**: every referenced path and `npm run` script actually exists · not too long (or too thin) · both `AGENTS.md` and `CLAUDE.md` so every agent is covered · monorepos: large workspace packages have a nested `AGENTS.md` or are mentioned in the root docs |
+| **Feedback loops** | 25%    | A discoverable test command (package.json `test`, pytest config, `make test`, `cargo test`, `go test`) · linter configured (eslint, biome, oxlint, ruff, flake8, clippy, golangci-lint) · typecheck command (`tsc`, mypy, pyright) · CI config · `--run`: test suite passes and is fast                                                                                                                                                                    |
+| **Navigability**   | 20%    | `node_modules`, `.venv`, `dist`, caches ignored (and not committed) · no source files over 1000 lines · no minified/vendored/generated blobs in agent view · shallow directory tree · README                                                                                                                                                                                                                                                               |
+| **Type safety**    | 15%    | TypeScript `strict` across root and package tsconfigs (follows `extends`, incl. workspace packages), `any` / `@ts-ignore` / `@ts-nocheck` density · plain JS penalized · Python type-hint coverage of product code + mypy/pyright config · Go/Rust count as compiler-checked                                                                                                                                                                               |
+| **Safety**         | 10%    | Committed `.env` / keys / credentials files · AWS, GitHub, Slack, Stripe, OpenAI, Anthropic, Google, npm token patterns · dangerous scripts: `rm -rf ~`, `curl \| sh`, force-push, `npm publish` hidden in `build`/`test`, network calls in install hooks                                                                                                                                                                                                  |
 
 Checks that don't apply (e.g. Python checks in a TS repo) are marked n/a and excluded from the score.
 In polyglot repos, per-language parts are weighted by each language's share of the code, so a tooling
 `package.json` in a Rust repo doesn't count as much as the Rust itself. Secrets in tests, fixtures and
 examples are listed (with `--verbose`) but don't lower the score.
+
+**Monorepos.** npm, pnpm, yarn and bun workspaces, Cargo workspaces and Go multi-module repos
+(`go.work`, or nested `go.mod`) are detected automatically. Each package is also scored on its own
+for feedback loops, navigability and type safety, with root linter/TypeScript configs and root
+`package.json` scripts counted as covering it. The report shows a per-package breakdown and a
+code-size-weighted aggregate (`workspaces` in `--json`); the headline score stays repo-wide.
+Examples, test helpers and docs packages are skipped.
+
+```text
+  Workspaces  pnpm · 13 package(s) · aggregate 93/100
+    packages/expect      84  ████████░░  in root docs · no oversized source files (>1000 lines)
+    packages/vitest      89  █████████░  in root docs · no oversized source files (>1000 lines)
+```
 
 **Generated docs earn partial credit.** An `AGENTS.md` created by `--fix` still carries a
 `Generated by agent-ready` marker and TODO placeholders. Until a human edits it, the content checks
@@ -222,7 +235,7 @@ whatever `npm run build` does.
 
 - [ ] Deeper Go and Rust checks (unsafe/`interface{}` density, nested `Cargo.toml` workspaces) and Java/Kotlin support
 - [ ] `--run` for lint/typecheck too, and flaky-test detection (run twice, compare)
-- [ ] Monorepo awareness: score each workspace package, check nested `AGENTS.md`
+- [x] Monorepo awareness: score each workspace package, check nested `AGENTS.md`
 - [ ] Doc staleness via git history (doc untouched while referenced code churned)
 - [ ] MCP/tooling checks (`.mcp.json`, Claude Code hooks, `.claude/settings.json` permissions)
 - [ ] Smarter `--fix`: `tsconfig` strict migration plan, `.cursorignore` for generated code, `.env.example`
