@@ -1,6 +1,7 @@
 import type { Check } from '../types.js';
 import { contextChecks } from './context-docs.js';
 import { feedbackChecks } from './feedback.js';
+import { goRustChecks } from './go-rust.js';
 import { navigabilityChecks } from './navigability.js';
 import { safetyChecks } from './safety.js';
 import { typeSafetyChecks } from './type-safety.js';
@@ -12,4 +13,5 @@ export const builtinChecks: Check[] = [
   ...navigabilityChecks,
   ...typeSafetyChecks,
   ...safetyChecks,
+  ...goRustChecks,
 ];

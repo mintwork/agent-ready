@@ -5,6 +5,23 @@ All notable changes to this project are documented here. The format is based on
 [Semantic Versioning](https://semver.org/). Until 1.0, scoring weights may still be tuned in minor
 releases; any change that moves scores is called out here.
 
+## [Unreleased]
+
+### Added
+
+- Deeper Go and Rust checks:
+  - `types.go-any` (weight 1): `interface{}`/`any` used as a type per 1000 lines of Go product
+    code. Generic constraints, comments, strings, tests and generated files don't count. 1.0 up to
+    2/kloc, falling linearly to 0.7 at 30/kloc.
+  - `types.rust-unsafe` (weight 1): `unsafe` blocks/fns/impls per 1000 lines of Rust. `-sys` crates
+    are skipped, and `#![forbid(unsafe_code)]` or `unsafe_code = "forbid"` scores 1. 1.0 up to
+    1/kloc, falling to 0.7 at 20/kloc.
+  - `feedback.cargo-workspace` (weight 1): one cargo workspace reaches every crate. Nested
+    workspaces and crates in no workspace are flagged; members globs, `exclude`, path dependencies
+    (implicit members) and cargo-fuzz `fuzz/` crates are understood.
+  - Score effect: tokio 66 → 65 (9.4 unsafe/kloc), hugo 80 → 78 (15 any/kloc), zap types 100 → 95,
+    ripgrep 62 → 63 (workspace check passes); ollama, cobra, hyper and codex are unchanged overall.
+
 ## [0.1.1] - 2026-11-14
 
 ### Changed
