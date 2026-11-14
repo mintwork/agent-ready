@@ -150,7 +150,7 @@ describe('--fix: TypeScript strict migration plan', () => {
         'tsconfig.json': JSON.stringify({
           compilerOptions: { strict: false, noImplicitAny: true, alwaysStrict: true },
         }),
-        'src/err.ts': 'try { f(); } catch (e) { console.log(e as any); }\n',
+        'src/err.ts': 'try { f(); } catch (e) { console.log(e); }\n',
       },
     });
 

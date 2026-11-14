@@ -25,7 +25,7 @@ npm run demo:gif     # rebuild docs/demo.gif (needs Google Chrome + ffmpeg)
   0..1 score (or `null` = not applicable), findings, and an optional `fix()` that _proposes_ `FileChange`s.
   Register new checks in `src/checks/index.ts`.
 - `src/scan.ts` — runs checks and computes weighted category/overall scores (`CATEGORIES`).
-- `src/fix/` — `agents-md.ts` generates starter docs; `env-example.ts` builds `.env.example` (names
+- `src/fix/` — `agents-md.ts` generates starter docs; `env-example.ts` builds the env-var template (names
   only, never values); `strict-plan.ts` is the report-only tsconfig strict plan; `index.ts` plans and
   applies changes safely.
 - `src/report/` — terminal renderer and shields.io badge.

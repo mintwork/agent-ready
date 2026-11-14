@@ -1,4 +1,4 @@
-import { projectTsconfigs, resolveCompilerOptions } from '../checks/type-safety.js';
+import { escapeHatches, projectTsconfigs, resolveCompilerOptions } from '../checks/type-safety.js';
 import type { RepoContext } from '../context.js';
 import { isFixturePath } from '../util/paths.js';
 
@@ -53,8 +53,9 @@ function countHatches(ctx: RepoContext): EscapeHatches {
   for (const f of files) {
     const text = ctx.read(f);
     if (!text) continue;
-    out.anys += (text.match(/:\s*any\b|as any\b|<any>/g) ?? []).length;
-    out.ignores += (text.match(/(?:\/\/|\/\*+)\s*@ts-ignore/g) ?? []).length;
+    const h = escapeHatches(text);
+    out.anys += h.anys;
+    out.ignores += h.ignores;
     out.catches += (text.match(/\bcatch\s*\(\s*\w+\s*\)/g) ?? []).length;
   }
   return out;
