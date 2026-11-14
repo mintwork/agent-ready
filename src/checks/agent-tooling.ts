@@ -45,15 +45,17 @@ function literalSecret(key: string, value: unknown): boolean {
   return v.length >= 8 && !v.includes('${') && !PLACEHOLDER_VALUE.test(v);
 }
 
+const SCRIPT_EXT = /\.(?:sh|bash|py|m?js|cjs|ts|rb|pl)$/;
+
 /** Relative script paths in a command line (`./scripts/x.sh`, `.claude/hooks/fmt.py`, `server/index.js`). */
 function scriptPaths(command: string): string[] {
   const out: string[] = [];
   const cleaned = command.replace(/"?\$\{?CLAUDE_PROJECT_DIR\}?"?\/?/g, '');
   for (const raw of cleaned.split(/\s+/)) {
     const tok = raw.replace(/^['"]|['"]$/g, '');
-    if (!/^(?:\.{1,2}\/)?[\w.-]+(?:\/[\w.-]+)*\.(?:sh|bash|py|m?js|cjs|ts|rb|pl)$/.test(tok))
-      continue;
-    if (!tok.includes('/')) continue;
+    // Two linear tests rather than one nested pattern (which can backtrack on long tokens).
+    if (!SCRIPT_EXT.test(tok) || !/^[\w./-]+$/.test(tok) || !tok.includes('/')) continue;
+    if (tok.startsWith('/') || tok.includes('//')) continue;
     out.push(posix.normalize(tok));
   }
   return out;
