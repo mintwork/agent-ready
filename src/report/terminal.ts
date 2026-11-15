@@ -1,5 +1,5 @@
 import { CATEGORIES } from '../scan.js';
-import type { CheckOutcome, Report } from '../types.js';
+import type { CheckOutcome, Report, WorkspaceReport } from '../types.js';
 import type { Colors } from '../util/color.js';
 
 function bar(score: number, width: number): string {
@@ -20,6 +20,54 @@ function icon(o: CheckOutcome, colors: Colors): string {
 
 export interface TerminalOptions {
   verbose: boolean;
+}
+
+const MAX_PACKAGES_SHOWN = 10;
+
+function renderWorkspaces(ws: WorkspaceReport, colors: Colors, opts: TerminalOptions): string[] {
+  const { c } = colors;
+  const out: string[] = [''];
+  const agg =
+    ws.aggregate === null
+      ? c('gray', 'n/a')
+      : `${c(scoreColor(ws.aggregate), String(ws.aggregate))}${c('gray', '/100')}`;
+  out.push(
+    `  ${c('bold', 'Workspaces')}  ${c('gray', `${ws.kinds.join(' + ')} · ${ws.total} package(s) · aggregate`)} ${agg}`,
+  );
+  const rated = [...ws.packages].sort(
+    (a, b) => (a.score ?? 101) - (b.score ?? 101) || a.dir.localeCompare(b.dir),
+  );
+  const shown = opts.verbose
+    ? [...ws.packages]
+    : rated.slice(0, MAX_PACKAGES_SHOWN).sort((a, b) => a.dir.localeCompare(b.dir));
+  const width = Math.min(40, Math.max(...shown.map((p) => p.dir.length)));
+  for (const p of shown) {
+    const label = (p.dir.length > width ? `…${p.dir.slice(-(width - 1))}` : p.dir).padEnd(width);
+    const docs = p.docs.length
+      ? p.docs.map((d) => d.slice(d.lastIndexOf('/') + 1)).join(' + ')
+      : p.mentioned
+        ? 'in root docs'
+        : c('yellow', 'no docs');
+    const worst = [...p.issues].sort((a, b) => a.score - b.score)[0];
+    const issue = worst ? c('gray', ` · ${worst.title.toLowerCase()}`) : '';
+    if (p.score === null) {
+      out.push(`    ${label} ${c('gray', `${'n/a'.padStart(3)}  ${'·'.repeat(10)}`)}  ${docs}`);
+    } else {
+      const col = scoreColor(p.score);
+      out.push(
+        `    ${label} ${c(col, String(p.score).padStart(3))}  ${c(col, bar(p.score, 10))}  ${docs}${issue}`,
+      );
+    }
+  }
+  const hidden = ws.total - shown.length;
+  if (hidden > 0) {
+    const why =
+      ws.packages.length < ws.total
+        ? `${ws.total - ws.packages.length} small package(s) not scored`
+        : '--verbose for all';
+    out.push(c('gray', `    …and ${hidden} more (${why})`));
+  }
+  return out;
 }
 
 export function renderTerminal(report: Report, colors: Colors, opts: TerminalOptions): string {
@@ -59,6 +107,8 @@ export function renderTerminal(report: Report, colors: Colors, opts: TerminalOpt
       );
     }
   }
+
+  if (report.workspaces) out.push(...renderWorkspaces(report.workspaces, colors, opts));
 
   for (const cat of CATEGORIES) {
     const checks = report.checks.filter((o) => o.category === cat.id);

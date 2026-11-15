@@ -9,6 +9,47 @@ releases; any change that moves scores is called out here.
 
 ### Added
 
+- `--sarif`: SARIF 2.1.0 report for GitHub code scanning. Every check is a rule; findings of checks
+  that aren't fully passing are results, located at the file (and line) they're about. Paths are
+  relative to the git root, so scanning a subdirectory works. Scores are unchanged.
+- GitHub Action: `sarif` input (uploads the report with `github/codeql-action/upload-sarif`),
+  `sarif-category` input and `sarif-file` output.
+- Monorepo awareness. npm/pnpm/yarn/bun workspaces, Cargo workspaces and Go multi-module repos are
+  detected, and each package is scored on feedback loops, navigability and type safety. Root
+  configs and root scripts count for the packages. The terminal report shows a per-package
+  breakdown and a code-size-weighted aggregate; `--json` has a new `workspaces` field.
+  `scan(root, { workspaces: false })` turns it off. The headline score is still repo-wide.
+- New check `context.packages` (weight 1): large workspace packages (10+ code files) have their
+  own `AGENTS.md`/`CLAUDE.md` or are mentioned in the root docs. It is n/a outside monorepos, so
+  only monorepos with context docs can see a score change (e.g. vitest: context docs 87 → 88,
+  overall unchanged at 91).
+- `createPackageContext()` builds a context for one package from its repo's context.
+- Agent tooling checks. Each one is n/a unless the repo ships that config, so repos that don't use
+  a tool are unaffected:
+  - `feedback.mcp` (weight 1): `.mcp.json`, `.cursor/mcp.json` and `.vscode/mcp.json` parse, and
+    each server has a `command` or an http(s) `url`. Local scripts it runs must exist (build
+    output and gitignored paths are skipped). Credentials should be `${VAR}` expansions, not
+    literals.
+  - `feedback.hooks` (weight 1): Claude Code hooks in `.claude/settings.json` use real event names
+    (catches `preToolUse`-style typos), valid matcher regexes, the right shape and scripts that exist.
+  - `safety.agent-permissions` (weight 1): flags committed `Bash`/`Bash(*)` allow rules,
+    `defaultMode: "bypassPermissions"`, pre-approved shells/interpreters/`rm`/`curl`/`git push`,
+    `enableAllProjectMcpServers`, and Codex `sandbox_mode = "danger-full-access"`.
+  - `context.cursor-rules` (weight 1): every `.cursor/rules/*.mdc` applies on its own (frontmatter
+    with `alwaysApply`, a `description` or `globs` that match files) and isn't empty.
+    Score impact on repos that use these tools: Continuous-Claude-v3 49 → 50, nano-agent 44 → 46,
+    spectrum-design-data 83 → 84; home-ops stays 52 (a rule that never applies, valid MCP config).
+- Smarter `--fix`:
+  - Hides committed generated, minified and vendored files flagged by `nav.generated`. It appends
+    them to `.cursorignore` (Cursor) and `.ignore` (ripgrep: Claude Code, Codex), collapsing
+    `generated/`/`vendor/`/`dist/` directories into one entry.
+  - Creates `.env.example` from the env vars the product code reads (JS/TS, Python, Go, Rust,
+    Ruby), but only when the project loads `.env` files (a dotenv library, or a local `.env*`
+    exists) and no template exists. Names only: values are never copied.
+  - Prints a TypeScript strict-mode migration plan for non-strict tsconfigs (flags in order, a
+    `tsc --noEmit --<flag>` preview command, escape-hatch counts). Report only: tsconfigs are
+    never edited.
+  - Scores are unchanged.
 - `--run` also runs the lint and typecheck commands. New checks `feedback.lint-passes` and
   `feedback.typecheck-passes` (weight 1 each) score 1 when the command passes, 0.4 when it fails and
   0.2 on timeout; a command that isn't installed is n/a. Scripts that publish or delete are never run.
