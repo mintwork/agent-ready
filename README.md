@@ -108,10 +108,14 @@ npx @mintwork/agent-ready [path] [options]
 
   --json             Machine-readable JSON report
   --badge            Print a shields.io badge (markdown) for your README
-  --fix              Apply safe auto-fixes (AGENTS.md/CLAUDE.md, missing doc sections, .gitignore)
+  --sarif            SARIF 2.1.0 report for GitHub code scanning
+  --fix              Apply safe auto-fixes (AGENTS.md/CLAUDE.md, missing doc sections, .gitignore,
+                     .cursorignore/.ignore, .env.example) and print a strict-mode migration plan
   --dry-run          With --fix: show the diff without writing
   --force            With --fix: allow overwriting existing files
-  --run              Execute the test command and score its speed
+  --run              Execute the test, lint and typecheck commands (runs project code)
+  --flaky            With --run: run the tests twice and flag flaky results
+  --timeout <s>      With --run: per-command timeout in seconds (default 300)
   --min-score <n>    Exit 1 if the score is below n (CI gating)
   --verbose, -v      Show passing checks and all findings
   --no-color         Disable colors
@@ -121,23 +125,59 @@ npx @mintwork/agent-ready [path] [options]
 missing sections in your context doc). It never rewrites content you wrote unless you pass
 `--force`, and it always prints a diff. Generated docs never recommend scripts that publish or delete.
 
+It also:
+
+- **Hides committed generated code** (minified bundles, vendored libraries, `generated/` dirs) by
+  appending it to `.cursorignore` (Cursor) and `.ignore` (ripgrep, used by Claude Code and Codex).
+  The files stay in git.
+- **Writes `.env.example`** from the environment variables your code reads (`process.env.X`,
+  `import.meta.env.X`, `os.getenv`, `os.Getenv`, `env::var`). It only does this when the project
+  loads `.env` files and has no template yet. It writes names only: values from your local `.env`
+  are never copied.
+- **Prints a TypeScript strict-mode migration plan** when a tsconfig isn't `strict`. The plan lists
+  the remaining strict flags in a sensible order, each with the `tsc --noEmit --<flag>` command that
+  previews its errors. It never edits your tsconfig.
+
 ## What it checks
 
-| Category           | Weight | Checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ------------------ | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Context docs**   | 30%    | `AGENTS.md` / `CLAUDE.md` / `.cursor/rules` / Copilot / Gemini instructions exist · they list exact build, test and lint commands · they describe architecture and key directories · **not stale**: every referenced path and `npm run` script actually exists · **not drifting** (git history): a doc untouched for 90+ days while 25+ later commits changed the files it names or added/removed files in the dirs it describes · not too long (or too thin) · both `AGENTS.md` and `CLAUDE.md` so every agent is covered |
-| **Feedback loops** | 25%    | A discoverable test command (package.json `test`, pytest config, `make test`, `cargo test`, `go test`) · linter configured (eslint, biome, oxlint, ruff, flake8, clippy, golangci-lint) · typecheck command (`tsc`, mypy, pyright) · CI config · `--run`: test suite passes and is fast                                                                                                                                                                                                                                    |
-| **Navigability**   | 20%    | `node_modules`, `.venv`, `dist`, caches ignored (and not committed) · no source files over 1000 lines · no minified/vendored/generated blobs in agent view · shallow directory tree · README                                                                                                                                                                                                                                                                                                                               |
-| **Type safety**    | 15%    | TypeScript `strict` across root and package tsconfigs (follows `extends`, incl. workspace packages), `any` / `@ts-ignore` / `@ts-nocheck` density · plain JS penalized · Python type-hint coverage of product code + mypy/pyright config · Go/Rust count as compiler-checked                                                                                                                                                                                                                                               |
-| **Safety**         | 10%    | Committed `.env` / keys / credentials files · AWS, GitHub, Slack, Stripe, OpenAI, Anthropic, Google, npm token patterns · dangerous scripts: `rm -rf ~`, `curl \| sh`, force-push, `npm publish` hidden in `build`/`test`, network calls in install hooks                                                                                                                                                                                                                                                                  |
+| Category           | Weight | Checks                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------ | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Context docs**   | 30%    | `AGENTS.md` / `CLAUDE.md` / `.cursor/rules` / Copilot / Gemini instructions exist · they list exact build, test and lint commands · they describe architecture and key directories · **not stale**: every referenced path and `npm run` script actually exists · **not drifting** (git history): a doc untouched for 90+ days while 25+ later commits changed the files it names or added/removed files in the dirs it describes · not too long (or too thin) · both `AGENTS.md` and `CLAUDE.md` so every agent is covered · `.cursor/rules/*.mdc` actually apply (frontmatter, globs that match files) · monorepos: large workspace packages have a nested `AGENTS.md` or are mentioned in the root docs |
+| **Feedback loops** | 25%    | A discoverable test command (package.json `test`, pytest config, `make test`, `cargo test`, `go test`) · linter configured (eslint, biome, oxlint, ruff, flake8, clippy, golangci-lint) · typecheck command (`tsc`, mypy, pyright) · CI config · `--run`: test suite passes and is fast, lint and typecheck pass, `--flaky` flags tests that change result between two runs                                                                                                                                                                                                                                                                                                                               |
+| **Navigability**   | 20%    | `node_modules`, `.venv`, `dist`, caches ignored (and not committed) · no source files over 1000 lines · no minified/vendored/generated blobs in agent view · shallow directory tree · README                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Type safety**    | 15%    | TypeScript `strict` across root and package tsconfigs (follows `extends`, incl. workspace packages), `any` / `@ts-ignore` / `@ts-nocheck` density · plain JS penalized · Python type-hint coverage of product code + mypy/pyright config · Go/Rust count as compiler-checked                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **Safety**         | 10%    | Committed `.env` / keys / credentials files · AWS, GitHub, Slack, Stripe, OpenAI, Anthropic, Google, npm token patterns · dangerous scripts: `rm -rf ~`, `curl \| sh`, force-push, `npm publish` hidden in `build`/`test`, network calls in install hooks                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+
+**`--run` executes project code**, so it is opt-in. It runs the test command (timed), the lint
+command and the typecheck command the report detected (package.json scripts, `make` targets,
+ruff/mypy, `go vet`/`go build`, `cargo clippy`/`cargo check`). Scripts that publish or delete are
+never run. `--flaky` runs the test suite a second time and compares the results, including which
+tests failed for vitest/jest, pytest, `go test`, `cargo test` and TAP output. Each command gets a
+timeout (`--timeout`, default 300s), and on timeout the whole process tree is killed. Only use
+`--run` on repos you trust.
 
 Doc drift reads local `git log` only and never touches the network. It is n/a in shallow clones,
 so set `fetch-depth: 0` on `actions/checkout` if you want it in CI.
 
 Checks that don't apply (e.g. Python checks in a TS repo) are marked n/a and excluded from the score.
+Agent-tooling checks (MCP, hooks, permissions, Cursor rules) are n/a unless the repo ships that
+config, so you're never penalized for not using a tool.
 In polyglot repos, per-language parts are weighted by each language's share of the code, so a tooling
 `package.json` in a Rust repo doesn't count as much as the Rust itself. Secrets in tests, fixtures and
 examples are listed (with `--verbose`) but don't lower the score.
+
+**Monorepos.** npm, pnpm, yarn and bun workspaces, Cargo workspaces and Go multi-module repos
+(`go.work`, or nested `go.mod`) are detected automatically. Each package is also scored on its own
+for feedback loops, navigability and type safety, with root linter/TypeScript configs and root
+`package.json` scripts counted as covering it. The report shows a per-package breakdown and a
+code-size-weighted aggregate (`workspaces` in `--json`); the headline score stays repo-wide.
+Examples, test helpers and docs packages are skipped.
+
+```text
+  Workspaces  pnpm · 13 package(s) · aggregate 93/100
+    packages/expect      84  ████████░░  in root docs · no oversized source files (>1000 lines)
+    packages/vitest      89  █████████░  in root docs · no oversized source files (>1000 lines)
+```
 
 **Generated docs earn partial credit.** An `AGENTS.md` created by `--fix` still carries a
 `Generated by agent-ready` marker and TODO placeholders. Until a human edits it, the content checks
@@ -167,13 +207,30 @@ jobs:
       - run: npx --yes @mintwork/agent-ready@latest . --min-score 75
 ```
 
-A reusable composite action is also included (`action.yml`, inputs `path`, `min-score`, `version`;
-output `score`, plus a job summary with your badge):
+A reusable composite action is also included (`action.yml`, inputs `path`, `min-score`, `version`,
+`sarif`, `sarif-category`; outputs `score` and `sarif-file`, plus a job summary with your badge):
 
 ```yaml
 - uses: mintwork/agent-ready@v0
   with: { min-score: 75 }
 ```
+
+Set `sarif: true` to also upload the findings to GitHub code scanning, so they show up as alerts
+on the files they're about (the job needs `security-events: write`):
+
+```yaml
+permissions:
+  contents: read
+  security-events: write
+steps:
+  - uses: actions/checkout@v7
+  - uses: mintwork/agent-ready@v0
+    with: { min-score: 75, sarif: true }
+```
+
+`--sarif` reports every check as a rule and every finding of a check that isn't fully passing as a
+result. Repo-level problems (no CI, no context file) are anchored at your `AGENTS.md`/`README.md`.
+Safety checks carry a `security-severity`, so leaked secrets rank as high-severity alerts.
 
 `@v0` tracks the latest 0.x release; pin `@v0.1.0` for a fixed version. The action runs the
 agent-ready release matching the tag you use, unless you override it with `version`.
@@ -224,12 +281,12 @@ whatever `npm run build` does.
 ## Roadmap
 
 - [ ] Deeper Go and Rust checks (unsafe/`interface{}` density, nested `Cargo.toml` workspaces) and Java/Kotlin support
-- [ ] `--run` for lint/typecheck too, and flaky-test detection (run twice, compare)
-- [ ] Monorepo awareness: score each workspace package, check nested `AGENTS.md`
+- [x] `--run` for lint/typecheck too, and flaky-test detection (run twice, compare)
+- [x] Monorepo awareness: score each workspace package, check nested `AGENTS.md`
 - [x] Doc staleness via git history (doc untouched while referenced code churned)
-- [ ] MCP/tooling checks (`.mcp.json`, Claude Code hooks, `.claude/settings.json` permissions)
-- [ ] Smarter `--fix`: `tsconfig` strict migration plan, `.cursorignore` for generated code, `.env.example`
-- [ ] SARIF output for GitHub code scanning
+- [x] MCP/tooling checks (`.mcp.json`, Claude Code hooks, `.claude/settings.json` permissions, `.cursor/rules`)
+- [x] Smarter `--fix`: `tsconfig` strict migration plan, `.cursorignore` for generated code, `.env.example`
+- [x] SARIF output for GitHub code scanning (`--sarif`, action input `sarif: true`)
 - [ ] Public leaderboard of popular open-source repos
 
 Ideas and PRs welcome — especially new checks backed by real agent failure modes.

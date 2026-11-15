@@ -1,7 +1,10 @@
+import { execFileSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
 import { createContext } from './context.js';
 import { applyFixes, planFixes } from './fix/index.js';
+import { renderStrictPlans, strictMigrationPlans } from './fix/strict-plan.js';
 import { badgeMarkdown } from './report/badge.js';
+import { toSarif } from './report/sarif.js';
 import { renderTerminal } from './report/terminal.js';
 import { scanContext } from './scan.js';
 import { makeColors, shouldUseColor } from './util/color.js';
@@ -22,10 +25,14 @@ Usage
 Options
   --json             Machine-readable JSON report
   --badge            Print a shields.io badge (markdown) for your README
-  --fix              Apply safe auto-fixes (creates AGENTS.md/CLAUDE.md, .gitignore entries)
+  --sarif            SARIF 2.1.0 report for GitHub code scanning
+  --fix              Apply safe auto-fixes (AGENTS.md/CLAUDE.md, .gitignore, .cursorignore/.ignore,
+                     .env.example) and print a TypeScript strict-mode migration plan
   --dry-run          With --fix: show the diff without writing
   --force            With --fix: allow overwriting existing files
-  --run              Execute the test command and score its speed
+  --run              Execute the test, lint and typecheck commands (opt-in: runs project code)
+  --flaky            With --run: run the tests twice and flag flaky results
+  --timeout <s>      With --run: per-command timeout in seconds (default 300)
   --min-score <n>    Exit 1 if the score is below n (CI gating)
   --verbose, -v      Show passing checks and all findings
   --no-color         Disable colors
@@ -37,6 +44,7 @@ Examples
   npx ${NAME} --fix                # generate AGENTS.md + CLAUDE.md, fix .gitignore
   npx ${NAME} --min-score 70       # fail CI below 70
   npx ${NAME} --badge >> README.md
+  npx ${NAME} --sarif > agent-ready.sarif
 `;
 
 export async function main(argv: string[], io: Io = process): Promise<number> {
@@ -56,7 +64,12 @@ export async function main(argv: string[], io: Io = process): Promise<number> {
     io.stdout.write(`${VERSION}\n`);
     return 0;
   }
-  const colors = makeColors(!values['no-color'] && !values.json && shouldUseColor(io.stdout));
+  if (values.sarif && (values.json || values.badge)) {
+    io.stderr.write('--sarif cannot be combined with --json or --badge\n');
+    return 2;
+  }
+  const machine = Boolean(values.json || values.sarif);
+  const colors = makeColors(!values['no-color'] && !machine && shouldUseColor(io.stdout));
   const root = positionals[0] ?? '.';
   const minScore = values['min-score'] === undefined ? undefined : Number(values['min-score']);
   if (minScore !== undefined && (!Number.isFinite(minScore) || minScore < 0 || minScore > 100)) {
@@ -71,13 +84,24 @@ export async function main(argv: string[], io: Io = process): Promise<number> {
     io.stderr.write(`${(err as Error).message}\n`);
     return 2;
   }
-  const scanOpts = { run: Boolean(values.run) };
+  const timeout = values.timeout === undefined ? 300 : Number(values.timeout);
+  if (!Number.isFinite(timeout) || timeout <= 0) {
+    io.stderr.write('--timeout must be a positive number of seconds\n');
+    return 2;
+  }
+  const scanOpts = {
+    run: Boolean(values.run || values.flaky),
+    flaky: Boolean(values.flaky),
+    runTimeoutMs: timeout * 1000,
+  };
   let report = await scanContext(ctx, scanOpts);
 
   if (values.fix) {
     const before = report.score;
+    // Report-only advice, computed before the fixes change anything.
+    const strictPlan = renderStrictPlans(ctx, strictMigrationPlans(ctx));
     const changes = planFixes(ctx);
-    const log = values.json ? io.stderr : io.stdout;
+    const log = machine ? io.stderr : io.stdout;
     if (changes.length === 0) {
       log.write(
         `\n  Nothing to auto-fix. Remaining items need a human (or an agent) — see the report.\n`,
@@ -117,10 +141,20 @@ export async function main(argv: string[], io: Io = process): Promise<number> {
         }
       }
     }
+    if (strictPlan.length) {
+      const [title, ...rest] = strictPlan;
+      log.write(`\n  ${colors.c('bold', title ?? '')}\n${rest.join('\n')}\n`);
+    }
   }
 
   if (values.json) {
     io.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else if (values.sarif) {
+    const sarif = toSarif(report, {
+      uriPrefix: ctx.isGit ? gitPrefix(ctx.root) : '',
+      fallbackFile: SARIF_ANCHORS.find((f) => ctx.has(f)),
+    });
+    io.stdout.write(`${JSON.stringify(sarif, null, 2)}\n`);
   } else if (values.badge) {
     io.stdout.write(`${badgeMarkdown(report.score)}\n`);
   } else {
@@ -141,10 +175,13 @@ function parse(argv: string[]) {
     options: {
       json: { type: 'boolean' },
       badge: { type: 'boolean' },
+      sarif: { type: 'boolean' },
       fix: { type: 'boolean' },
       'dry-run': { type: 'boolean' },
       force: { type: 'boolean' },
       run: { type: 'boolean' },
+      flaky: { type: 'boolean' },
+      timeout: { type: 'string' },
       'min-score': { type: 'string' },
       verbose: { type: 'boolean', short: 'v' },
       'no-color': { type: 'boolean' },
@@ -152,4 +189,29 @@ function parse(argv: string[]) {
       help: { type: 'boolean', short: 'h' },
     },
   });
+}
+
+/** Files that repo-level SARIF results are anchored to (code scanning needs a location). */
+const SARIF_ANCHORS = [
+  'AGENTS.md',
+  'CLAUDE.md',
+  'README.md',
+  'readme.md',
+  'package.json',
+  'pyproject.toml',
+  'Cargo.toml',
+  'go.mod',
+];
+
+/** Path of `root` inside its git work tree (`packages/web/`), so SARIF URIs resolve from the repo root. */
+function gitPrefix(root: string): string {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-prefix'], {
+      cwd: root,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return '';
+  }
 }
