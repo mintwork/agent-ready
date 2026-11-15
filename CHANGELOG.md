@@ -9,6 +9,21 @@ releases; any change that moves scores is called out here.
 
 ### Added
 
+- `--sarif`: SARIF 2.1.0 report for GitHub code scanning. Every check is a rule; findings of checks
+  that aren't fully passing are results, located at the file (and line) they're about. Paths are
+  relative to the git root, so scanning a subdirectory works. Scores are unchanged.
+- GitHub Action: `sarif` input (uploads the report with `github/codeql-action/upload-sarif`),
+  `sarif-category` input and `sarif-file` output.
+- Monorepo awareness. npm/pnpm/yarn/bun workspaces, Cargo workspaces and Go multi-module repos are
+  detected, and each package is scored on feedback loops, navigability and type safety. Root
+  configs and root scripts count for the packages. The terminal report shows a per-package
+  breakdown and a code-size-weighted aggregate; `--json` has a new `workspaces` field.
+  `scan(root, { workspaces: false })` turns it off. The headline score is still repo-wide.
+- New check `context.packages` (weight 1): large workspace packages (10+ code files) have their
+  own `AGENTS.md`/`CLAUDE.md` or are mentioned in the root docs. It is n/a outside monorepos, so
+  only monorepos with context docs can see a score change (e.g. vitest: context docs 87 → 88,
+  overall unchanged at 91).
+- `createPackageContext()` builds a context for one package from its repo's context.
 - Agent tooling checks. Each one is n/a unless the repo ships that config, so repos that don't use
   a tool are unaffected:
   - `feedback.mcp` (weight 1): `.mcp.json`, `.cursor/mcp.json` and `.vscode/mcp.json` parse, and

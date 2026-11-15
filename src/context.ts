@@ -48,6 +48,11 @@ export interface PackageJson {
 export interface RepoContext {
   root: string;
   isGit: boolean;
+  /**
+   * For a workspace package scanned on its own (see `createPackageContext`): the repository
+   * context it was derived from, and the package directory relative to the repository root.
+   */
+  parent?: { ctx: RepoContext; dir: string };
   /** Files an agent would see (respects .gitignore / .ignore), posix relative paths. */
   files: string[];
   /** Tracked files that live inside dependency/cache dirs (should never be committed). */
@@ -189,26 +194,8 @@ export function createContext(rootInput: string): RepoContext {
   if (!existsSync(root) || !statSync(root).isDirectory()) {
     throw new Error(`Not a directory: ${root}`);
   }
-
-  const readCache = new Map<string, string | null>();
-  const read = (rel: string): string | null => {
-    if (readCache.has(rel)) return readCache.get(rel) ?? null;
-    let content: string | null = null;
-    try {
-      content = readFileSync(join(root, rel), 'utf8');
-    } catch {
-      content = null;
-    }
-    readCache.set(rel, content);
-    return content;
-  };
-
-  let pkg: PackageJson | null = null;
-  const pkgText = read('package.json');
-  if (pkgText) {
-    const parsed = parseJsonc(pkgText);
-    if (parsed && typeof parsed === 'object') pkg = parsed as PackageJson;
-  }
+  const read = makeReader(root, new Map());
+  const pkg = parsePkg(read('package.json'));
   const config = loadConfig(root, pkg);
 
   const gitDir = git(root, ['rev-parse', '--is-inside-work-tree']);
@@ -248,35 +235,6 @@ export function createContext(rootInput: string): RepoContext {
   const truncated = files.length > MAX_FILES;
   if (truncated) files = files.slice(0, MAX_FILES);
   files.sort();
-  const fileSet = new Set(files);
-
-  const statCache = new Map<string, number>();
-  const size = (rel: string): number => {
-    const cached = statCache.get(rel);
-    if (cached !== undefined) return cached;
-    let s = -1;
-    try {
-      s = statSync(join(root, rel)).size;
-    } catch {
-      s = -1;
-    }
-    statCache.set(rel, s);
-    return s;
-  };
-
-  const lineCache = new Map<string, number>();
-  const lineCount = (rel: string): number => {
-    const cached = lineCache.get(rel);
-    if (cached !== undefined) return cached;
-    const text = read(rel);
-    let n = 0;
-    if (text) {
-      for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) n++;
-      if (text.length > 0 && text[text.length - 1] !== '\n') n++;
-    }
-    lineCache.set(rel, n);
-    return n;
-  };
 
   const ignoredCache = new Map<string, boolean>();
   const isIgnored = (rel: string): boolean => {
@@ -313,11 +271,191 @@ export function createContext(rootInput: string): RepoContext {
     return false;
   };
 
+  return buildContext({
+    t0,
+    root,
+    read,
+    pkg,
+    config,
+    isGit,
+    files,
+    trackedHeavy,
+    truncated,
+    isIgnored,
+    isIgnoredMany,
+    hasTracked,
+    overlay: new Map(),
+  });
+}
+
+/**
+ * Repo-root files that still apply inside a workspace package that has none of its own: linter and
+ * TypeScript configs (tools look them up from parent directories), .gitignore and CI workflows.
+ */
+const INHERITED = [
+  /^\.gitignore$/,
+  /^tsconfig\.json$/,
+  /^biome\.jsonc?$/,
+  /^(?:eslint\.config\.[cm]?[jt]s|\.eslintrc(?:\.\w+)?)$/,
+  /^\.oxlintrc\.json$/,
+  /^\.prettierrc/,
+  /^\.?ruff\.toml$/,
+  /^(?:\.flake8|\.pylintrc|mypy\.ini|pyrightconfig\.json)$/,
+  /^\.?clippy\.toml$/,
+  /^\.golangci\.(?:ya?ml|toml|json)$/,
+  /^\.github\/workflows\/[^/]+\.ya?ml$/,
+  /^\.gitlab-ci\.yml$/,
+];
+
+/** Root scripts run from the repo root on behalf of every package (not lifecycle hooks). */
+const LIFECYCLE_SCRIPT = /^(?:pre|post)|^(?:prepare|install|prepublishOnly|prepack)$/;
+
+/**
+ * A context for one workspace package (`dir`, relative to the parent's root), derived from the
+ * parent without listing files again. `exclude` removes nested packages (used for the root package
+ * of a repo whose root is itself a crate/module). Inherited root configs are visible under their
+ * root-relative names when the package has no file of that name.
+ */
+export function createPackageContext(
+  parent: RepoContext,
+  dir: string,
+  exclude: string[] = [],
+): RepoContext {
+  const t0 = Date.now();
+  const clean = dir.replace(/^\.\/?|\/$/g, '');
+  const prefix = clean ? `${clean}/` : '';
+  const root = clean ? join(parent.root, clean) : parent.root;
+  const excluded = exclude
+    .map((d) => d.replace(/^\.\/?|\/$/g, ''))
+    .filter((d) => d && d !== clean)
+    .map((d) => `${d}/`);
+  const under = (f: string) => f.startsWith(prefix) && !excluded.some((e) => f.startsWith(e));
+  const files = parent.files.filter(under).map((f) => f.slice(prefix.length));
+  const own = new Set(files);
+  const overlay = new Map<string, string>();
+  if (prefix) {
+    for (const f of parent.files) {
+      if (!f.includes('/') || f.startsWith('.github/')) {
+        if (!own.has(f) && INHERITED.some((re) => re.test(f))) overlay.set(f, join(parent.root, f));
+      }
+    }
+  }
+  files.push(...overlay.keys());
+  files.sort();
+  const read = makeReader(root, overlay);
+  const pkg = parsePkg(read('package.json'));
+  const up = (rel: string) => `${prefix}${rel}`;
+  return buildContext({
+    t0,
+    root,
+    read,
+    pkg,
+    config: parent.config,
+    isGit: parent.isGit,
+    files,
+    trackedHeavy: parent.trackedHeavy.filter(under).map((f) => f.slice(prefix.length)),
+    truncated: parent.truncated,
+    isIgnored: (rel) => parent.isIgnored(up(rel)),
+    isIgnoredMany: (rels) => {
+      const res = parent.isIgnoredMany(rels.map(up));
+      return new Map(rels.map((r) => [r, res.get(up(r)) ?? false]));
+    },
+    hasTracked: (relDir) => parent.hasTracked(up(relDir)),
+    overlay,
+    // Root scripts (`test`, `lint`, `typecheck`) and hoisted dev tools cover JS packages without their own.
+    ...(prefix && pkg
+      ? {
+          inheritedScripts: Object.fromEntries(
+            Object.entries(parent.pkg?.scripts ?? {}).filter(([k]) => !LIFECYCLE_SCRIPT.test(k)),
+          ),
+          inheritedDeps: parent.allDeps(),
+        }
+      : {}),
+    parent: { ctx: parent, dir: clean || '.' },
+  });
+}
+
+function parsePkg(text: string | null): PackageJson | null {
+  if (!text) return null;
+  const parsed = parseJsonc(text);
+  return parsed && typeof parsed === 'object' ? (parsed as PackageJson) : null;
+}
+
+function makeReader(root: string, overlay: Map<string, string>) {
+  const readCache = new Map<string, string | null>();
+  const read = (rel: string): string | null => {
+    if (readCache.has(rel)) return readCache.get(rel) ?? null;
+    let content: string | null = null;
+    try {
+      content = readFileSync(overlay.get(rel) ?? join(root, rel), 'utf8');
+    } catch {
+      content = null;
+    }
+    readCache.set(rel, content);
+    return content;
+  };
+  return Object.assign(read, { cache: readCache });
+}
+
+interface ContextParts {
+  t0: number;
+  root: string;
+  read: ReturnType<typeof makeReader>;
+  pkg: PackageJson | null;
+  config: UserConfig;
+  isGit: boolean;
+  files: string[];
+  trackedHeavy: string[];
+  truncated: boolean;
+  isIgnored(rel: string): boolean;
+  isIgnoredMany(rels: string[]): Map<string, boolean>;
+  hasTracked(relDir: string): boolean;
+  /** Repo-relative name -> absolute path, for files inherited from a parent directory. */
+  overlay: Map<string, string>;
+  /** Root package.json scripts / dependencies a workspace package can use (hoisted tooling). */
+  inheritedScripts?: Record<string, string>;
+  inheritedDeps?: Record<string, string>;
+  parent?: RepoContext['parent'];
+}
+
+function buildContext(parts: ContextParts): RepoContext {
+  const { t0, root, read, pkg, config, isGit, files, overlay } = parts;
+  const readCache = read.cache;
+  const abs = (rel: string) => overlay.get(rel) ?? join(root, rel);
+  const fileSet = new Set(files);
+
+  const statCache = new Map<string, number>();
+  const size = (rel: string): number => {
+    const cached = statCache.get(rel);
+    if (cached !== undefined) return cached;
+    let s = -1;
+    try {
+      s = statSync(abs(rel)).size;
+    } catch {
+      s = -1;
+    }
+    statCache.set(rel, s);
+    return s;
+  };
+
+  const lineCache = new Map<string, number>();
+  const lineCount = (rel: string): number => {
+    const cached = lineCache.get(rel);
+    if (cached !== undefined) return cached;
+    const text = read(rel);
+    let n = 0;
+    if (text) {
+      for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) n++;
+      if (text.length > 0 && text[text.length - 1] !== '\n') n++;
+    }
+    lineCache.set(rel, n);
+    return n;
+  };
+
   const filesWithExt = (...exts: string[]): string[] =>
     files.filter((f) => exts.some((e) => f.endsWith(e)));
 
   const pyproject = read('pyproject.toml');
-
   // A language counts if it has a manifest, or makes up a meaningful share of the code
   // (a couple of helper scripts don't make a JS repo a Python project). Fixtures and vendored
   // code don't count towards the share.
@@ -370,18 +508,19 @@ export function createContext(rootInput: string): RepoContext {
   return {
     root,
     isGit,
+    ...(parts.parent ? { parent: parts.parent } : {}),
     files,
-    trackedHeavy,
-    truncated,
+    trackedHeavy: parts.trackedHeavy,
+    truncated: parts.truncated,
     setupMs: Date.now() - t0,
     languages,
     codeFiles,
     share,
     pkg,
     pyproject,
-    packageManager: detectPackageManager(root, pkg),
+    packageManager: parts.parent?.ctx.packageManager ?? detectPackageManager(root, pkg),
     config,
-    exists: (rel) => existsSync(join(root, rel)),
+    exists: (rel) => overlay.has(rel) || existsSync(join(root, rel)),
     has: (rel) => fileSet.has(rel),
     read,
     readJson<T>(rel: string): T | null {
@@ -390,15 +529,15 @@ export function createContext(rootInput: string): RepoContext {
     },
     size,
     lineCount,
-    isIgnored,
-    isIgnoredMany,
-    hasTracked,
+    isIgnored: parts.isIgnored,
+    isIgnoredMany: parts.isIgnoredMany,
+    hasTracked: parts.hasTracked,
     filesWithExt,
     async prefetchSizes() {
       const todo = files.filter((f) => !statCache.has(f));
       await pool(todo, async (f) => {
         try {
-          statCache.set(f, (await stat(join(root, f))).size);
+          statCache.set(f, (await stat(abs(f))).size);
         } catch {
           statCache.set(f, -1);
         }
@@ -421,7 +560,7 @@ export function createContext(rootInput: string): RepoContext {
         let text: string | null = null;
         if (known !== undefined) {
           try {
-            text = await readFile(join(root, f), 'utf8');
+            text = await readFile(abs(f), 'utf8');
           } catch {
             text = null;
           }
@@ -429,7 +568,7 @@ export function createContext(rootInput: string): RepoContext {
           return;
         }
         try {
-          const fh = await open(join(root, f), 'r');
+          const fh = await open(abs(f), 'r');
           try {
             const sz = known ?? (await fh.stat()).size;
             statCache.set(f, sz);
@@ -444,8 +583,12 @@ export function createContext(rootInput: string): RepoContext {
       });
       return out;
     },
-    scripts: () => pkg?.scripts ?? {},
-    allDeps: () => ({ ...(pkg?.dependencies ?? {}), ...(pkg?.devDependencies ?? {}) }),
+    scripts: () => ({ ...parts.inheritedScripts, ...(pkg?.scripts ?? {}) }),
+    allDeps: () => ({
+      ...parts.inheritedDeps,
+      ...(pkg?.dependencies ?? {}),
+      ...(pkg?.devDependencies ?? {}),
+    }),
   };
 }
 

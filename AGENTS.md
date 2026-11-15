@@ -24,9 +24,12 @@ npm run demo:gif     # rebuild docs/demo.gif (needs Google Chrome + ffmpeg)
 - `src/checks/` — one file per category. Each check is a `Check` (see `src/types.ts`) returning a
   0..1 score (or `null` = not applicable), findings, and an optional `fix()` that _proposes_ `FileChange`s.
   Register new checks in `src/checks/index.ts`.
-- `src/scan.ts` — runs checks and computes weighted category/overall scores (`CATEGORIES`).
+- `src/scan.ts` — runs checks and computes weighted category/overall scores (`CATEGORIES`), plus
+  the per-package breakdown for monorepos (`scanWorkspaces`).
+- `src/workspaces.ts` — detects npm/pnpm/yarn/bun, Cargo and Go workspaces; `createPackageContext()`
+  in `context.ts` derives a package's context (with inherited root configs) without re-listing files.
 - `src/fix/` — `agents-md.ts` generates starter docs; `index.ts` plans and applies changes safely.
-- `src/report/` — terminal renderer and shields.io badge.
+- `src/report/` — terminal renderer, shields.io badge and SARIF (`sarif.ts`, for code scanning).
 - `src/util/` — tiny zero-dep helpers: gitignore matcher, JSONC parser, line diff, ANSI colors,
   path classifiers (`paths.ts`: test/fixture/example paths).
 - `scripts/demo-gif.mjs` — renders the real CLI output on a synthetic temp repo into `docs/demo.gif`
