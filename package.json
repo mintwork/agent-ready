@@ -1,6 +1,6 @@
 {
   "name": "@mintwork/agent-ready",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Lighthouse for AI coding agents. Score how well Claude Code, Codex and Cursor can work in your repo, and auto-fix the gaps.",
   "keywords": [
     "ai",
