@@ -29,7 +29,7 @@ npm run demo:gif     # rebuild docs/demo.gif (needs Google Chrome + ffmpeg)
 - `src/workspaces.ts` — detects npm/pnpm/yarn/bun, Cargo and Go workspaces; `createPackageContext()`
   in `context.ts` derives a package's context (with inherited root configs) without re-listing files.
 - `src/fix/` — `agents-md.ts` generates starter docs; `index.ts` plans and applies changes safely.
-- `src/report/` — terminal renderer and shields.io badge.
+- `src/report/` — terminal renderer, shields.io badge and SARIF (`sarif.ts`, for code scanning).
 - `src/util/` — tiny zero-dep helpers: gitignore matcher, JSONC parser, line diff, ANSI colors,
   path classifiers (`paths.ts`: test/fixture/example paths).
 - `scripts/demo-gif.mjs` — renders the real CLI output on a synthetic temp repo into `docs/demo.gif`

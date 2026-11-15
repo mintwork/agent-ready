@@ -9,6 +9,11 @@ releases; any change that moves scores is called out here.
 
 ### Added
 
+- `--sarif`: SARIF 2.1.0 report for GitHub code scanning. Every check is a rule; findings of checks
+  that aren't fully passing are results, located at the file (and line) they're about. Paths are
+  relative to the git root, so scanning a subdirectory works. Scores are unchanged.
+- GitHub Action: `sarif` input (uploads the report with `github/codeql-action/upload-sarif`),
+  `sarif-category` input and `sarif-file` output.
 - Monorepo awareness. npm/pnpm/yarn/bun workspaces, Cargo workspaces and Go multi-module repos are
   detected, and each package is scored on feedback loops, navigability and type safety. Root
   configs and root scripts count for the packages. The terminal report shows a per-package
