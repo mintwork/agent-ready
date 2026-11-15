@@ -3,8 +3,9 @@ import { main } from './cli.js';
 
 // `agent-ready | head` closes stdout early; exit quietly instead of crashing on EPIPE.
 process.stdout.on('error', (err: NodeJS.ErrnoException) => {
-  if (err.code !== 'EPIPE') process.stderr.write(`agent-ready: ${err.message}\n`);
-  process.exit(err.code === 'EPIPE' ? 0 : 1);
+  if (err.code === 'EPIPE') process.exit(0);
+  console.error(`agent-ready: ${err.message}`);
+  process.exit(1);
 });
 
 main(process.argv.slice(2)).then(
