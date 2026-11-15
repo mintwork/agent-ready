@@ -2,7 +2,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { detectCommands } from '../src/checks/context-docs.js';
-import { testCommand } from '../src/checks/feedback.js';
+import { testCommand, typecheckCommand } from '../src/checks/feedback.js';
 import { createContext } from '../src/context.js';
 import { generateAgentsMd } from '../src/fix/agents-md.js';
 import { scan } from '../src/scan.js';
@@ -36,6 +36,7 @@ describe('Java/Kotlin detection', () => {
   it('detects Java from a root Maven build and scores its feedback loops', async () => {
     const dir = maven();
     expect(testCommand(createContext(dir))).toBe('./mvnw test');
+    expect(typecheckCommand(createContext(dir))).toBe('./mvnw compile');
     const r = await scan(dir);
     expect(r.languages).toEqual(['java']);
     expect(check(r, 'feedback.test')).toMatchObject({

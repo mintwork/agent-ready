@@ -131,6 +131,14 @@ function tsconfigWeights(ctx: RepoContext, tsconfigs: string[]): number[] {
   return counts.map((n) => Math.max(1, n));
 }
 
+/** `any` annotations/casts and `@ts-ignore` comments in one TypeScript file. */
+export function escapeHatches(text: string): { anys: number; ignores: number } {
+  return {
+    ignores: (text.match(/(?:\/\/|\/\*+)\s*@ts-ignore/g) ?? []).length,
+    anys: (text.match(/:\s*any\b|as any\b|<any>/g) ?? []).length,
+  };
+}
+
 async function tsCheck(
   ctx: RepoContext,
 ): Promise<{ score: number; summary: string; findings: Finding[] }> {
@@ -196,8 +204,7 @@ async function tsCheck(
   const counts = await ctx.mapFiles(tsFiles.slice(0, 3000), (f, text) => ({
     f,
     nocheck: /^\s*(?:\/\/|\/\*+)\s*@ts-nocheck/m.test(text),
-    ignores: (text.match(/(?:\/\/|\/\*+)\s*@ts-ignore/g) ?? []).length,
-    anys: (text.match(/:\s*any\b|as any\b|<any>/g) ?? []).length,
+    ...escapeHatches(text),
   }));
   for (const c of counts) {
     if (!c) continue;

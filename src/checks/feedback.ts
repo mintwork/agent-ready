@@ -1,7 +1,8 @@
-import { spawnSync } from 'node:child_process';
 import { JVM_BUILD, type Language, type RepoContext, runScriptCmd } from '../context.js';
-import type { Check, CheckResult } from '../types.js';
+import type { Check, CheckResult, RunOptions } from '../types.js';
 import { isFixturePath } from '../util/paths.js';
+import { type RunResult, runCommand } from '../util/run.js';
+import { isDangerousScript } from './safety.js';
 import { projectTsconfigs } from './type-safety.js';
 
 const JS_TEST_DEPS = [
@@ -16,7 +17,7 @@ const JS_TEST_DEPS = [
   'node:test',
 ];
 
-function pyHas(ctx: RepoContext, section: string): boolean {
+export function pyHas(ctx: RepoContext, section: string): boolean {
   return ctx.pyproject?.includes(`[${section}`) ?? false;
 }
 
@@ -51,7 +52,7 @@ function pytestConfigured(ctx: RepoContext): boolean {
   );
 }
 
-function makeTarget(ctx: RepoContext, name: string): boolean {
+export function makeTarget(ctx: RepoContext, name: string): boolean {
   const mk = ctx.read('Makefile') ?? ctx.read('justfile') ?? '';
   return new RegExp(`^${name}\\s*:`, 'm').test(mk);
 }
@@ -108,6 +109,87 @@ function jvmTestFiles(ctx: RepoContext): number {
       (/(^|\/)src\/(?:test|androidTest|integrationTest|[\w]*[Tt]est)\/|(^|\/)test\//.test(f) ||
         /(?:Tests?|IT|Spec)\.(?:java|kt|groovy)$/.test(f)),
   ).length;
+}
+
+/** `uv run ` / `poetry run ` prefix for Python tools, matching the project's environment manager. */
+function pyRun(ctx: RepoContext): string {
+  if (ctx.has('uv.lock')) return 'uv run ';
+  if (ctx.has('poetry.lock')) return 'poetry run ';
+  return '';
+}
+
+/** The command `--run` uses to lint, or null if none is obvious. Never a dangerous script. */
+export function lintCommand(ctx: RepoContext): string | null {
+  const lint = ctx.scripts().lint;
+  if (lint && !isDangerousScript(lint)) return runScriptCmd(ctx, 'lint');
+  if (makeTarget(ctx, 'lint')) return 'make lint';
+  if (hasPy(ctx)) {
+    if (pyHas(ctx, 'tool.ruff') || ctx.has('ruff.toml') || ctx.has('.ruff.toml'))
+      return `${pyRun(ctx)}ruff check .`;
+    if (ctx.has('.flake8')) return `${pyRun(ctx)}flake8`;
+  }
+  if (hasGo(ctx) && ctx.has('go.mod')) {
+    return ctx.files.some((f) => /^\.golangci\.(ya?ml|toml|json)$/.test(f))
+      ? 'golangci-lint run'
+      : 'go vet ./...';
+  }
+  if (hasRust(ctx) && ctx.has('Cargo.toml')) return 'cargo clippy --quiet --all-targets';
+  return null;
+}
+
+const TYPECHECK_SCRIPTS = [
+  'typecheck',
+  'type-check',
+  'check-types',
+  'types:check',
+  'check:types',
+  'tsc',
+  'types',
+];
+
+/** The command `--run` uses to typecheck, or null if none is obvious. */
+export function typecheckCommand(ctx: RepoContext): string | null {
+  const scripts = ctx.scripts();
+  const script = TYPECHECK_SCRIPTS.find((n) => scripts[n] && !isDangerousScript(scripts[n]));
+  if (script) return runScriptCmd(ctx, script);
+  if (makeTarget(ctx, 'typecheck')) return 'make typecheck';
+  if (ctx.languages.includes('typescript') && ctx.exists('node_modules/.bin/tsc')) {
+    if (projectTsconfigs(ctx).length > 0) return 'npx --no-install tsc --noEmit';
+  }
+  if (hasPy(ctx)) {
+    if (pyHas(ctx, 'tool.mypy') || ctx.has('mypy.ini')) return `${pyRun(ctx)}mypy .`;
+    if (pyHas(ctx, 'tool.pyright') || ctx.has('pyrightconfig.json')) return `${pyRun(ctx)}pyright`;
+  }
+  if (hasRust(ctx) && ctx.has('Cargo.toml')) return 'cargo check --quiet --all-targets';
+  if (hasGo(ctx) && ctx.has('go.mod')) return 'go build ./...';
+  const jvm = jvmBuildTool(ctx);
+  if (hasJvm(ctx) && jvm) return `${jvm.run} ${jvm.tool === 'maven' ? 'compile' : 'classes'}`;
+  return null;
+}
+
+const testRuns = new WeakMap<RepoContext, Promise<RunResult>[]>();
+
+/**
+ * The n-th run (0-based) of the test command for this context. Runs are shared between checks, so
+ * `feedback.speed` and `feedback.flaky` together run the suite twice, not three times.
+ */
+export function testRun(
+  ctx: RepoContext,
+  cmd: string,
+  opts: RunOptions,
+  n = 0,
+): Promise<RunResult> {
+  const runs = testRuns.get(ctx) ?? [];
+  testRuns.set(ctx, runs);
+  while (runs.length <= n) {
+    const prev = runs[runs.length - 1];
+    // Runs are sequential: two suites at once would fight over ports, files and CPU.
+    const next = (prev ?? Promise.resolve()).then(() =>
+      runCommand(cmd, { cwd: ctx.root, timeoutMs: opts.runTimeoutMs }),
+    );
+    runs.push(next);
+  }
+  return runs[n] as Promise<RunResult>;
 }
 
 /** Per-language part of a check: its score and how much of the codebase it covers. */
@@ -445,20 +527,13 @@ export const feedbackChecks: Check[] = [
     category: 'feedback',
     title: 'Tests run fast',
     weight: 2,
-    run(ctx, opts): CheckResult {
+    async run(ctx, opts): Promise<CheckResult> {
       if (!opts.run) return { score: null, summary: 'Skipped (pass --run to time the test suite)' };
       const cmd = testCommand(ctx);
       if (!cmd) return { score: 0, summary: 'No test command to run' };
-      const start = Date.now();
-      const res = spawnSync(cmd, {
-        cwd: ctx.root,
-        shell: true,
-        stdio: 'ignore',
-        timeout: opts.runTimeoutMs,
-        env: { ...process.env, CI: '1' },
-      });
-      const secs = (Date.now() - start) / 1000;
-      if (res.error && (res.error as NodeJS.ErrnoException).code === 'ETIMEDOUT') {
+      const res = await testRun(ctx, cmd, opts);
+      const secs = res.ms / 1000;
+      if (res.timedOut) {
         return {
           score: 0.1,
           summary: `\`${cmd}\` timed out after ${Math.round(secs)}s`,

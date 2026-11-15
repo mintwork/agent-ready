@@ -1,4 +1,5 @@
 import type { RepoContext } from '../context.js';
+import { envExampleFix } from '../fix/env-example.js';
 import type { Check, CheckResult, Finding } from '../types.js';
 import { isExamplePath, isTestPath } from '../util/paths.js';
 
@@ -308,6 +309,9 @@ export const safetyChecks: Check[] = [
           : undefined,
       };
     },
+    // Agents that can see which env vars exist (but not their values) set up and run the app
+    // instead of guessing or reading a real .env.
+    fix: envExampleFix,
   },
   {
     id: 'safety.scripts',

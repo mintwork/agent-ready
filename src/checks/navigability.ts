@@ -172,6 +172,84 @@ function committedHeavy(ctx: RepoContext): string[] {
   });
 }
 
+interface NoisyFile {
+  file: string;
+  bytes: number;
+  kind: 'vendored' | 'generated' | 'blob';
+}
+
+/** Committed generated, minified, vendored or huge files that agents would read or grep. */
+export function noisyFiles(ctx: RepoContext): NoisyFile[] {
+  const out: NoisyFile[] = [];
+  for (const f of ctx.files) {
+    const base = f.slice(f.lastIndexOf('/') + 1);
+    if (LOCKFILES.includes(base) || PY_LOCKS.includes(base) || f.endsWith('.snap')) continue;
+    const sz = ctx.size(f);
+    const vendored = isVendored(f) && SOURCE_EXT.test(f) && sz > 50 * 1024;
+    const generatedName = (isGeneratedName(f) && sz > 50 * 1024) || vendored;
+    const huge = sz > HUGE_BYTES && SOURCE_EXT.test(f);
+    const bigText = sz > HUGE_BYTES && /\.(json|csv|tsv|txt|xml|svg|sql|log|ndjson|jsonl)$/.test(f);
+    if (generatedName || huge || bigText) {
+      out.push({
+        file: f,
+        bytes: sz,
+        kind: vendored ? 'vendored' : generatedName ? 'generated' : 'blob',
+      });
+    }
+  }
+  return out;
+}
+
+/** Directory names whose whole content is generated or third-party. */
+const NOISE_DIRS = /^(?:generated|__generated__|vendor|vendors|third[-_]party|thirdparty|dist)$/i;
+/** Files that hide paths from agents: Cursor reads `.cursorignore`, ripgrep (Claude Code, Codex) `.ignore`. */
+const AGENT_IGNORE_FILES = ['.cursorignore', '.ignore'];
+
+/** Ignore entries for noisy files: whole directories when they are generated/vendor dirs. */
+export function agentIgnoreEntries(ctx: RepoContext): string[] {
+  const entries = new Set<string>();
+  for (const n of noisyFiles(ctx)) {
+    const parts = n.file.split('/');
+    const i = parts.findIndex((p, idx) => idx < parts.length - 1 && NOISE_DIRS.test(p));
+    entries.add(i === -1 ? `/${n.file}` : `/${parts.slice(0, i + 1).join('/')}/`);
+  }
+  return [...entries].sort().slice(0, 100);
+}
+
+/** Hide committed generated code from Cursor (`.cursorignore`) and ripgrep-based agents (`.ignore`). */
+function agentIgnoreFix(ctx: RepoContext): FileChange[] {
+  const entries = agentIgnoreEntries(ctx);
+  if (entries.length === 0) return [];
+  const changes: FileChange[] = [];
+  for (const path of AGENT_IGNORE_FILES) {
+    const before = ctx.read(path);
+    const existing = new Set((before ?? '').split(/\r?\n/).map((l) => l.trim()));
+    const add = entries.filter((e) => !existing.has(e) && !existing.has(e.slice(1)));
+    if (add.length === 0) continue;
+    const tool = path === '.cursorignore' ? 'Cursor' : 'ripgrep (Claude Code, Codex)';
+    const header = `# Generated/vendored files hidden from ${tool} by agent-ready (still in git)`;
+    if (before === null) {
+      changes.push({
+        path,
+        before: null,
+        after: `${header}\n${add.join('\n')}\n`,
+        kind: 'create',
+        description: `Hide ${add.length} generated/vendored path(s) from ${tool}`,
+      });
+    } else {
+      const sep = before === '' || before.endsWith('\n') ? '' : '\n';
+      changes.push({
+        path,
+        before,
+        after: `${before}${sep}\n${header}\n${add.join('\n')}\n`,
+        kind: 'append',
+        description: `Hide ${add.length} more generated/vendored path(s) from ${tool}`,
+      });
+    }
+  }
+  return changes;
+}
+
 export const navigabilityChecks: Check[] = [
   {
     id: 'nav.gitignore',
@@ -284,24 +362,11 @@ export const navigabilityChecks: Check[] = [
     title: 'Generated/minified blobs hidden from agents',
     weight: 2,
     run(ctx): CheckResult {
-      const findings: Finding[] = [];
-      for (const f of ctx.files) {
-        const base = f.slice(f.lastIndexOf('/') + 1);
-        if (LOCKFILES.includes(base) || PY_LOCKS.includes(base) || f.endsWith('.snap')) continue;
-        const sz = ctx.size(f);
-        const vendored = isVendored(f) && SOURCE_EXT.test(f) && sz > 50 * 1024;
-        const generatedName = (isGeneratedName(f) && sz > 50 * 1024) || vendored;
-        const huge = sz > HUGE_BYTES && SOURCE_EXT.test(f);
-        const bigText =
-          sz > HUGE_BYTES && /\.(json|csv|tsv|txt|xml|svg|sql|log|ndjson|jsonl)$/.test(f);
-        if (generatedName || huge || bigText) {
-          findings.push({
-            severity: 'warn',
-            file: f,
-            message: `${(sz / 1024).toFixed(0)} KB ${vendored ? 'vendored third-party code' : generatedName ? 'generated/minified' : 'blob'}`,
-          });
-        }
-      }
+      const findings: Finding[] = noisyFiles(ctx).map((n) => ({
+        severity: 'warn',
+        file: n.file,
+        message: `${(n.bytes / 1024).toFixed(0)} KB ${n.kind === 'vendored' ? 'vendored third-party code' : n.kind === 'generated' ? 'generated/minified' : 'blob'}`,
+      }));
       const lockfiles = ctx.files.filter((f) => LOCKFILES.includes(f));
       if (lockfiles.length > 1) {
         findings.push({
@@ -322,6 +387,7 @@ export const navigabilityChecks: Check[] = [
           : undefined,
       };
     },
+    fix: agentIgnoreFix,
   },
   {
     id: 'nav.depth',
