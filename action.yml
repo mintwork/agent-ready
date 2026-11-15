@@ -16,10 +16,21 @@ inputs:
       agent-ready npm version to run. Defaults to the version of the action ref you use
       (e.g. @v0.1.0 runs agent-ready@0.1.0), so pinning the action pins the CLI.
     default: ""
+  sarif:
+    description: >-
+      Also write a SARIF report and upload it to GitHub code scanning ("true"/"false"). The job
+      needs `permissions: security-events: write`.
+    default: "false"
+  sarif-category:
+    description: Code scanning category for the SARIF upload (set a different one per scanned path)
+    default: agent-ready
 outputs:
   score:
     description: The agent-ready score (0-100)
     value: ${{ steps.scan.outputs.score }}
+  sarif-file:
+    description: Path of the SARIF report (when `sarif` is "true")
+    value: ${{ steps.scan.outputs.sarif-file }}
 runs:
   using: composite
   steps:
@@ -29,6 +40,7 @@ runs:
         AR_PATH: ${{ inputs.path }}
         AR_MIN: ${{ inputs.min-score }}
         AR_VERSION: ${{ inputs.version }}
+        AR_SARIF: ${{ inputs.sarif }}
       run: |
         if [ -z "$AR_VERSION" ]; then
           AR_VERSION=$(node -p 'require(process.argv[1]).version' "$GITHUB_ACTION_PATH/package.json")
@@ -40,7 +52,17 @@ runs:
         echo "score=$SCORE" >> "$GITHUB_OUTPUT"
         echo "### agent-ready: $SCORE/100" >> "$GITHUB_STEP_SUMMARY"
         npx --yes "@mintwork/agent-ready@${AR_VERSION}" "$AR_PATH" --badge >> "$GITHUB_STEP_SUMMARY"
+        if [ "$AR_SARIF" = "true" ]; then
+          npx --yes "@mintwork/agent-ready@${AR_VERSION}" "$AR_PATH" --sarif > "$RUNNER_TEMP/agent-ready.sarif"
+          echo "sarif-file=$RUNNER_TEMP/agent-ready.sarif" >> "$GITHUB_OUTPUT"
+        fi
         if [ "$SCORE" -lt "$AR_MIN" ]; then
           echo "::error::agent-ready score $SCORE is below $AR_MIN"
           exit 1
         fi
+    # Upload even when the score gate fails, so the alerts explain the failure.
+    - if: ${{ always() && inputs.sarif == 'true' && steps.scan.outputs.sarif-file != '' }}
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: ${{ steps.scan.outputs.sarif-file }}
+        category: ${{ inputs.sarif-category }}
