@@ -15,15 +15,13 @@ export type ColorName = keyof typeof codes;
 
 export interface Colors {
   enabled: boolean;
-  c(name: ColorName, s: string): string;
+  c: (name: ColorName, s: string) => string;
 }
 
 export function makeColors(enabled: boolean): Colors {
   return {
     enabled,
-    c(name, s) {
-      return enabled ? `\x1b[${codes[name]}m${s}\x1b[0m` : s;
-    },
+    c: (name, s) => (enabled ? `\x1b[${codes[name]}m${s}\x1b[0m` : s),
   };
 }
 

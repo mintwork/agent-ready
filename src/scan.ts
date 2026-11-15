@@ -105,7 +105,7 @@ async function runChecks(
       title: check.title,
       weight: check.weight * Math.max(0.05, Math.min(1, result.weightScale ?? 1)),
       // A score held back only by an unedited generated doc isn't something --fix can improve.
-      fixable: Boolean(check.fix) && score !== null && (potential ?? score) < 1,
+      fixable: check.fix !== undefined && score !== null && (potential ?? score) < 1,
       durationMs: Date.now() - t0,
     });
   }

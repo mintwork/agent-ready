@@ -410,9 +410,9 @@ interface ContextParts {
   files: string[];
   trackedHeavy: string[];
   truncated: boolean;
-  isIgnored(rel: string): boolean;
-  isIgnoredMany(rels: string[]): Map<string, boolean>;
-  hasTracked(relDir: string): boolean;
+  isIgnored: (rel: string) => boolean;
+  isIgnoredMany: (rels: string[]) => Map<string, boolean>;
+  hasTracked: (relDir: string) => boolean;
   /** Repo-relative name -> absolute path, for files inherited from a parent directory. */
   overlay: Map<string, string>;
   /** Root package.json scripts / dependencies a workspace package can use (hoisted tooling). */

@@ -32,6 +32,8 @@ export function runCommand(cmd: string, opts: RunCommandOptions): Promise<RunRes
     let output = '';
     let timedOut = false;
     let settled = false;
+    // The project's own commands (package.json scripts, Makefile targets) are shell strings.
+    // nosemgrep: javascript.lang.security.audit.spawn-shell-true.spawn-shell-true
     const child = spawn(cmd, {
       cwd: opts.cwd,
       shell: true,

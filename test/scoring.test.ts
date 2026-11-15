@@ -77,11 +77,13 @@ describe('fixture scoring', () => {
     expect(r.checks.find((c) => c.id === 'nav.large-files')?.summary).not.toMatch(/node_modules/);
   });
 
+  // AWS's documented example key, assembled so this file contains no key-shaped literal.
+  const AWS_DOCS_EXAMPLE_KEY = ['AKIA', 'IOSFODNN7', 'EXAMPLE'].join('');
   it('ignores placeholder secrets and suppressed lines', async () => {
     const dir = fixture('good-ts', {
       git: true,
       files: {
-        'src/example.ts': `export const k = 'AKIAIOSFODNN7EXAMPLE';\nexport const j = '${FAKE_AWS_KEY}'; // agent-ready-ignore\n`,
+        'src/example.ts': `export const k = '${AWS_DOCS_EXAMPLE_KEY}';\nexport const j = '${FAKE_AWS_KEY}'; // agent-ready-ignore\n`,
         '.env.example': 'API_KEY=\n',
       },
     });

@@ -1,0 +1,5 @@
+# Codacy: paths that don't ship to users. Test fixtures are broken or insecure on purpose:
+# they're what agent-ready's checks are tested against.
+exclude_paths:
+  - "test/fixtures/**"
+  - "scripts/demo-gif.mjs"
