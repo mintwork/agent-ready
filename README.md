@@ -333,19 +333,9 @@ whatever `npm run build` does.
 
 ## Roadmap
 
-Shipped in 0.2.0:
-
-- [x] SARIF output for GitHub code scanning (`--sarif`, action input `sarif: true`)
-- [x] Monorepo awareness: score each workspace package, check nested `AGENTS.md`
-- [x] Agent tooling checks: `.mcp.json`, Claude Code hooks, committed agent permissions, `.cursor/rules`
-- [x] Smarter `--fix`: `.cursorignore`/`.ignore` for generated code, `.env.example`, TypeScript strict migration plan
-- [x] `--run` for lint and typecheck too, and flaky-test detection (`--flaky`: run twice, compare)
-- [x] Doc drift via git history (doc untouched while the code it describes churned)
-- [x] Deeper Go and Rust checks (`interface{}`/`any` and `unsafe` density, cargo workspaces) and basic Java/Kotlin support
-
-Next:
-
 - [ ] Public leaderboard of popular open-source repos
+
+Shipped features are in the [CHANGELOG](CHANGELOG.md).
 
 Ideas and PRs welcome — especially new checks backed by real agent failure modes.
 
