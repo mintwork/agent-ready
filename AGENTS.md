@@ -24,9 +24,14 @@ npm run demo:gif     # rebuild docs/demo.gif (needs Google Chrome + ffmpeg)
 - `src/checks/` — one file per category. Each check is a `Check` (see `src/types.ts`) returning a
   0..1 score (or `null` = not applicable), findings, and an optional `fix()` that _proposes_ `FileChange`s.
   Register new checks in `src/checks/index.ts`.
-- `src/scan.ts` — runs checks and computes weighted category/overall scores (`CATEGORIES`).
-- `src/fix/` — `agents-md.ts` generates starter docs; `index.ts` plans and applies changes safely.
-- `src/report/` — terminal renderer and shields.io badge.
+- `src/scan.ts` — runs checks and computes weighted category/overall scores (`CATEGORIES`), plus
+  the per-package breakdown for monorepos (`scanWorkspaces`).
+- `src/workspaces.ts` — detects npm/pnpm/yarn/bun, Cargo and Go workspaces; `createPackageContext()`
+  in `context.ts` derives a package's context (with inherited root configs) without re-listing files.
+- `src/fix/` — `agents-md.ts` generates starter docs; `env-example.ts` builds the env-var template (names
+  only, never values); `strict-plan.ts` is the report-only tsconfig strict plan; `index.ts` plans and
+  applies changes safely.
+- `src/report/` — terminal renderer, shields.io badge and SARIF (`sarif.ts`, for code scanning).
 - `src/util/` — tiny zero-dep helpers: gitignore matcher, JSONC parser, line diff, ANSI colors,
   path classifiers (`paths.ts`: test/fixture/example paths).
 - `scripts/demo-gif.mjs` — renders the real CLI output on a synthetic temp repo into `docs/demo.gif`
@@ -41,6 +46,8 @@ npm run demo:gif     # rebuild docs/demo.gif (needs Google Chrome + ffmpeg)
 - Zero runtime dependencies. Node 22+ built-ins only.
 - Fixers never write directly: they return `FileChange`s; `applyFixes` refuses to overwrite without `--force`.
 - Checks must be fast (whole scan < 2s on a typical repo) and must not execute project code unless `--run` is passed.
+  Checks that execute commands live in `src/checks/run-checks.ts` and use `runCommand()` (`src/util/run.ts`: timeout,
+  process-group kill); tests for them only run synthetic fixtures.
   To read many files, use `ctx.mapFiles()` (concurrent, uncached) rather than `ctx.read()` in a loop.
 - Per-language checks should return `weightScale: ctx.share(lang)` (or weight their parts by it) so
   minor languages in a polyglot repo don't dominate.
