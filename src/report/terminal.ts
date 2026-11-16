@@ -25,7 +25,7 @@ export interface TerminalOptions {
 const MAX_PACKAGES_SHOWN = 10;
 
 function renderWorkspaces(ws: WorkspaceReport, colors: Colors, opts: TerminalOptions): string[] {
-  const { c } = colors;
+  const c = colors.c.bind(colors);
   const out: string[] = [''];
   const agg =
     ws.aggregate === null
