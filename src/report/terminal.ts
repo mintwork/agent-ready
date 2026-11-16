@@ -71,7 +71,7 @@ function renderWorkspaces(ws: WorkspaceReport, colors: Colors, opts: TerminalOpt
 }
 
 export function renderTerminal(report: Report, colors: Colors, opts: TerminalOptions): string {
-  const { c } = colors;
+  const c = colors.c.bind(colors);
   const out: string[] = [];
   out.push('');
   out.push(
